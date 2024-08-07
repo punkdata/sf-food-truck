@@ -5,8 +5,8 @@ orbs:
   snyk: snyk/snyk@1.4.0
 jobs:
   build_test_scan:
-    docker:
-      - image: cimg/python:3.10.1
+    machine:
+      image: ubuntu-2004:current
     steps:
       - checkout
       - run:
