@@ -1,0 +1,23 @@
+body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+}
+
+input[type="text"] {
+    padding: 5px;
+    width: 300px;
+}
+
+button {
+    padding: 5px 10px;
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.results-table td {
+    padding: 10px;
+}

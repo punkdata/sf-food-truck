@@ -1,0 +1,7 @@
+services:
+  web:
+    build: .
+    image: ariv3ra/sf_food_trucks:latest
+    container_name: sf_food_trucks
+    ports:
+      - "8000:8000"

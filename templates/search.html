@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>San Francisco Food Truck Search</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
+</head>
+<body>
+    <h1>San Francisco Food Truck Search Page</h1>
+    <form method="post" action="/search">
+        <input type="text" name="food_type" placeholder="Search..." required>
+        <button type="submit">Search</button>
+    </form>
+    <p><i>Search for types of food, streets, truck names...</i></p>
+    <table class="results-table">
+        <tbody>
+            {% for result in results %}
+                <tr>
+                    <td>
+                        <b>Truck Name: </b>{{ result.applicant }}<br>
+                        <b>Food Served: </b>{{ result.foodserved }}<br>
+                        {% for loc in result.locations  %}
+                            <li><b>Day: </b>{{loc.weekday}}
+                                <b>Address: </b>{{ loc.location }}
+                            </li>
+                        {% endfor %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
