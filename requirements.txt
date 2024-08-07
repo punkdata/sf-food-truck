@@ -2,6 +2,7 @@ fastapi
 uvicorn
 requests
 jinja2
-pytest
 httpx
+pytest
+pytest-sugar
 python-multipart
