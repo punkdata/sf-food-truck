@@ -5,27 +5,33 @@ orbs:
   snyk: snyk/snyk@1.4.0
 jobs:
   build_test_scan:
-    executor: python/default
+    docker:
+      - image: cimg/python:3.10.1
     steps:
       - checkout
-      - python/install-packages:
-          pkg-manager: pip
-      - python/install-packages:
-          pip-dependency-file: requirements.txt
+      - run:
+          name: pip install 
+          command: |
+            pip install --upgrade pip
+            pip install -r requirements.txt
       - run:
           name: Run Unit tests
-          command: pytest
+          command: |
+            pwd
+            pytest
   snyk_vulnerability_scan:
-      executor: python/default
-      steps:
-        - checkout
-        - python/install-packages:
-            pkg-manager: pip
-        - python/install-packages:
-            pip-dependency-file: requirements.txt
-        - snyk/scan:
-            fail-on-issues: false
-            monitor-on-build: false
+    docker:
+      - image: cimg/python:3.10.1
+    steps:
+      - checkout
+      - run:
+          name: pip install 
+          command: |
+            pip install --upgrade pip
+            pip install -r requirements.txt
+      - snyk/scan:
+          fail-on-issues: false
+          monitor-on-build: false
   build_docker_image:
       machine:
         image: ubuntu-2004:current
