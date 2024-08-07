@@ -1,0 +1,50 @@
+version: 2.1
+orbs:
+  python: circleci/python@2.1.1
+  docker: circleci/docker@2.2.0
+  snyk: snyk/snyk@1.4.0
+jobs:
+  build_test_scan:
+    executor: python/default
+    steps:
+      - checkout
+      - python/install-packages:
+          pkg-manager: pip
+      - python/install-packages:
+          pip-dependency-file: requirements.txt
+      - run:
+          name: Run Unit tests
+          command: pytest
+  snyk_vulnerability_scan:
+      executor: python/default
+      steps:
+        - checkout
+        - python/install-packages:
+            pkg-manager: pip
+        - python/install-packages:
+            pip-dependency-file: requirements.txt
+        - snyk/scan:
+            fail-on-issues: false
+            monitor-on-build: false
+  build_docker_image:
+      machine:
+        image: ubuntu-2004:current
+      steps:
+        - checkout
+        - run:
+            name: Build Docker image
+            command: |
+              docker buildx build \
+              -t ${HUB_DOCKER_USER}/sf_food_trucks:<< pipeline.number >> \
+              -t ${HUB_DOCKER_USER}/sf_food_trucks:latest .  
+        - run:
+            name: Push Docker image to Docker Hub
+            command: |
+              echo $HUB_DOCKER_PWD |docker login --username=${HUB_DOCKER_USER} --password-stdin
+              docker push --all-tags ${HUB_DOCKER_USER}/sf_food_trucks      
+workflows:
+  test_scan_deploy:
+      jobs:
+        - build_test_scan       
+        - snyk_vulnerability_scan
+        - build_ocker_image
