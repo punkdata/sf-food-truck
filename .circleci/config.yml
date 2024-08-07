@@ -21,7 +21,7 @@ jobs:
             pytest
   snyk_vulnerability_scan:
     docker:
-      - image: cimg/python:3.10.1
+      - image: cimg/python:3.10.12
     steps:
       - checkout
       - run:
