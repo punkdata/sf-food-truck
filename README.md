@@ -56,6 +56,12 @@ The following is a list of future enhancements if time permits:
 - [Snyk][7]
 - [CircleCI][8]
 
+## CI/CD Pipeline
+
+This project has a CI/CD pipeline defined and [functional here][9]
+
+[https://app.circleci.com/pipelines/github/punkdata/sf-food-truck?branch=main][9]
+
 ## Usage: Execute locally
 
 Execute this application locally with the following commands:
@@ -94,3 +100,4 @@ docker run -d --name sf_food_trucks -p8000:8000 ariv3ra/sf_food_trucks:latest
 [6]:https://hub.docker.com/
 [7]:https://snyk.io/
 [8]:https://circleci.com
+[9]:https://app.circleci.com/pipelines/github/punkdata/sf-food-truck?branch=main
