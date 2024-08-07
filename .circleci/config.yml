@@ -47,4 +47,4 @@ workflows:
       jobs:
         - build_test_scan       
         - snyk_vulnerability_scan
-        - build_ocker_image
+        - build_docker_image
