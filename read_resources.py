@@ -72,5 +72,5 @@ def count_index_search(directory, output_file):
 
 
 if __name__ == "__main__":
-    directory = Path('C:/Users/ZKT30A3/projects/74017_account-customizations_aft')
+    directory = Path('terraform/')
     count_index_search(directory, 'results.txt')
