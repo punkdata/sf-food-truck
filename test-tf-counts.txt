@@ -1,0 +1,65 @@
+resource "aws_subnet" "public" {
+    count = 3
+    vpc_id = aws_vpc.main.vpc_id
+    cidr_block = cidrsubnet(aws_vpc.main.cidr_block,4, count.index)
+    availability_zone = data.aws_availability_zones.available.names[count.index]
+    map_public_ip_on_launch = false
+    tags = {
+        name = "public-subnet-${count.index + 1}"
+    }
+}
+
+
+
+# Amazon Managed Domain Lists and Associate with Egress Rule
+resource "aws _route53_ resolver_firewall_rule" "block_amazon _managed _domains" {
+    count = length(var managed_domain_list_ids)
+    firewall_rule_group_id = aws_route53_resolver_firewall rule_group.egress.id
+    priority= 100 + count.index # Ensure each rule has a unique priority
+    action= "ALERT"
+
+
+    name = "block-amazon-managed-domain-${count. index}"
+
+    firewall domain_list_id - var.managed_domain_list_ids[count.index]
+}
+
+
+##### Try these changes net-workload-testing/terraform/vpc
+
+#### Option 1
+
+resource "aws_subnet" "public" {
+  for_each = {
+    for i in range(3) : 
+    "subnet_${i + 1}" => {
+      cidr_block             = cidrsubnet(aws_vpc.main.cidr_block, 4, i)
+      availability_zone      = data.aws_availability_zones.available.names[i]
+      name                   = "public-subnet-${i + 1}"
+    }
+  }
+
+  vpc_id                 = aws_vpc.main.vpc_id
+  cidr_block             = each.value.cidr_block
+  availability_zone      = each.value.availability_zone
+  map_public_ip_on_launch = false
+  tags = {
+    name = each.value.name
+  }
+}
+
+
+### Option 2
+
+
+resource "aws_subnet" "public" {
+  for_each = toset(["subnet_1", "subnet_2", "subnet_3"])
+
+  vpc_id                  = aws_vpc.main.vpc_id
+  cidr_block              = cidrsubnet(aws_vpc.main.cidr_block, 4, index(each.key, "subnet_") + 1)
+  availability_zone       = data.aws_availability_zones.available.names[index(each.key, "subnet_")]
+  map_public_ip_on_launch = false
+  tags = {
+    name = "public-subnet-${index(each.key, "subnet_") + 1}"
+  }
+}
