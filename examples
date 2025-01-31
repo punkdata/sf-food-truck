@@ -1,23 +1,11 @@
 #!/bin/bash
 
-# Retrieve the Account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text 2>/dev/null)
-if [ $? -ne 0 ]; then
-  echo "Error: Failed to retrieve Account ID. Please check your AWS CLI configuration and permissions."
-  exit 1
-fi
-
-# Retrieve the Account Name (alias)
-ACCOUNT_NAME=$(aws iam list-account-aliases --query "AccountAliases[0]" --output text 2>/dev/null)
-if [ $? -ne 0 ]; then
-  echo "Error: Failed to retrieve Account Name. Please check your AWS CLI configuration and permissions."
-  exit 1
-fi
-
-# Handle empty Account Name
-if [ -z "$ACCOUNT_NAME" ]; then
-  ACCOUNT_NAME="(No alias set)"
-fi
+# Retrieve the Account Name (alias) and handle errors
+ACCOUNT_NAME=$(aws iam list-account-aliases --query "AccountAliases[0]" --output text 2>/dev/null) &&
+  [ -n "$ACCOUNT_NAME" ] || {
+    echo "Error: Failed to retrieve Account Name or no account alias is set. Please check your AWS CLI configuration and permissions, or set an account alias."
+    exit 1
+  }
 
 # Output the results
 echo "Account ID: $ACCOUNT_ID"
