@@ -1,11 +1,17 @@
 #!/bin/bash
 
-# Retrieve the Account Name (alias) and handle errors
-ACCOUNT_NAME=$(aws iam list-account-aliases --query "AccountAliases[0]" --output text 2>/dev/null) &&
-  [ -n "$ACCOUNT_NAME" ] || {
-    echo "Error: Failed to retrieve Account Name or no account alias is set. Please check your AWS CLI configuration and permissions, or set an account alias."
-    exit 1
-  }
+# Retrieve the Account Name (alias)
+ACCOUNT_NAME=$(aws iam list-account-aliases --query "AccountAliases[0]" --output text 2>/dev/null)
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to retrieve Account Name. Please check your AWS CLI configuration and permissions."
+  exit 1
+fi
+
+# Check if Account Name is empty
+if [ -z "$ACCOUNT_NAME" ]; then
+  echo "Error: No account alias is set for this AWS account. Please set an account alias and try again."
+  exit 1
+fi
 
 # Output the results
 echo "Account ID: $ACCOUNT_ID"
