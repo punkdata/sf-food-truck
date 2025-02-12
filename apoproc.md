@@ -1,244 +1,219 @@
-S
-# Request Process for Open Policy Agent (OPA) Code Modifications and Terraform Configurations
+# Open Policy Agent (OPA) Request Process for Terraform Code and Configurations
 
-## Overview
-This document defines the process for engineers to request the creation or modification of Open Policy Agent (OPA) code for use with Terraform code and configurations. The goal is to ensure that requests are clear, well-structured, and include sufficient information for the OPA team to efficiently develop effective policies. The document also provides templates for request submissions, as well as examples for writing OPA rules, creating tests, and integrating into local and CI/CD pipelines.
+## Purpose
+This document defines a clear and structured process for engineers to request new or modified Open Policy Agent (OPA) policies and tests, specifically for Terraform code and configurations. It is designed to be accessible for both technical and less technical audiences, ensuring that everyone involved can understand and follow the process. The document includes a step-by-step guide, templates for requests and OPA policies, and examples for local execution.
 
 ---
 
-## Request Process Definition
+## Overview of OPA and Terraform
 
-### 1. Initiating a Request
-- **Requester**: Developer or team responsible for the infrastructure or Terraform code requiring policy enforcement.
-- **Submit to OPA Team**: Submit a request through the designated internal tracking system or via email.
+### What is Open Policy Agent (OPA)?
+OPA is a tool that helps enforce rules and policies across your systems. For example, it can ensure that your Terraform configurations meet security, compliance, or best practice requirements.
 
-### 2. Required Information for Submission
-The request must include the following details:
-- **Requestor’s Contact Information**: Name, email, and team information.
-- **Context**: A brief description of the Terraform resource or configuration that the OPA policy will apply to.
-- **Policy Type**: Indicate whether it is a new policy or an update to an existing policy.
-- **Policy Goal**: A clear description of what the policy should enforce or prevent. Examples include restrictions on resource sizes, specific tags, or ensuring certain resource types are always used.
-- **Terraform Resources and Code**: Provide the relevant Terraform code that needs to be checked by OPA, as well as a description of any configurations that impact policy.
-- **Mock Data for Testing**: A sample of real or near-real Terraform input data that will allow OPA to validate the policies against common use cases. Ensure this data is anonymized if sensitive.
-- **Expected Outcome**: Describe the expected outcome if the policy is violated or if it passes validation.
+### What is Terraform?
+Terraform is a tool used to define and manage infrastructure as code. It allows you to create, update, and delete cloud resources (like servers, databases, or storage) using configuration files.
 
-### 3. Template for Request Submission
-Use the following template to submit your request:
-```plaintext
-**Requestor Name:**
-- Name:
-- Team/Department:
-- Contact Email:
+### Why Combine OPA and Terraform?
+By using OPA with Terraform, you can automatically check that your infrastructure configurations follow your organization’s rules before they are deployed. This helps prevent mistakes and ensures compliance.
 
-**Policy Type:**
-- New Policy / Update to Existing Policy
+---
 
-**Policy Description:**
-- What is the specific problem that the OPA policy should address? Example: "Ensure all EC2 instances have the tag 'Environment' set to 'Production'."
+## Request Process
 
-**Relevant Terraform Code:**
-- Provide the section of the Terraform configuration or module being referenced.
+### Step 1: Submit a Request
+1. **Use the OPA Request Template** (provided below) to submit a request.
+   - This template ensures you provide all the necessary details for the OPA team to understand your needs.
+2. **What to Include**:
+   - **Terraform Resource/Configuration**: Describe the specific Terraform resource or configuration you want to evaluate (e.g., an S3 bucket or a virtual machine).
+   - **Desired Conditions**: Clearly explain the rules or conditions the OPA policy should enforce (e.g., "All S3 buckets must have encryption enabled").
+   - **Examples**: Provide examples of what a valid and invalid configuration looks like.
+   - **Priority**: Indicate how urgent the request is (e.g., Low, Medium, High).
+   - **Additional Context**: Include any relevant information, such as compliance requirements or security concerns.
 
-**Mock Data (Sample Terraform Variables/Resources):**
-- Include any relevant Terraform variable definitions or mock data to test against the policy.
+### Step 2: OPA Team Review
+1. The OPA team will review your request within **2 business days**.
+2. If they need more information, they will contact you.
+3. Once approved, the request will be prioritized and assigned to an OPA developer.
 
-**Expected Outcome:**
-- Describe the result of a policy violation (e.g., a violation of a tag requirement would result in the resource not being created).
+### Step 3: OPA Development
+1. The OPA team will write the policy and create tests to ensure it works as expected.
+2. They will use the **OPA Writing Template** (provided below) to ensure consistency and completeness.
+3. You will be notified when the policy is ready for your review.
 
-**Testing Requirements:**
-- Specify if any additional test scenarios should be included, such as edge cases or resource configurations outside of typical usage.
+### Step 4: Testing and Validation
+1. You will test the OPA policy locally to ensure it works as expected.
+2. Provide feedback to the OPA team within **3 business days**.
+3. The OPA team will address any issues and finalize the policy.
+
+### Step 5: Deployment
+1. The finalized OPA policy will be added to the appropriate repository.
+2. You will be notified when the policy is deployed and ready for use.
+
+---
+
+## Template Request
+
+To ensure your OPA request is clear, complete, and easy to process, include the following elements in your submission:
+
+### 1. **Requester Information**
+   - **Name**: Your name or the name of the person submitting the request.
+   - **Date**: The date of the request.
+   - **Priority**: The urgency of the request (Low, Medium, High).
+
+### 2. **Terraform Resource/Configuration**
+   - **Resource Type**: The type of Terraform resource (e.g., AWS S3 Bucket, Azure Virtual Machine).
+   - **Configuration Example**: A snippet of the Terraform code or configuration you want to evaluate.
+
+### 3. **Desired Conditions**
+   - **Condition 1**: The first rule or condition the OPA policy should enforce (e.g., "All S3 buckets must have encryption enabled").
+   - **Condition 2**: Additional rules or conditions, if applicable.
+
+### 4. **Examples**
+   - **Valid Configuration**: An example of a Terraform configuration that meets the desired conditions.
+   - **Invalid Configuration**: An example of a Terraform configuration that does NOT meet the desired conditions.
+
+### 5. **Additional Context**
+   - **Compliance Requirements**: Any compliance standards the policy must adhere to (e.g., GDPR, HIPAA).
+   - **Security Concerns**: Any security considerations the policy should address (e.g., "Prevent accidental exposure of sensitive data").
+   - **Other**: Any other relevant information that could help the OPA team understand your request.
+
+---
+
+## OPA Request Template
+
+Use this template to submit your OPA request. It ensures you provide all the necessary details for the OPA team to understand your needs.
+
+```markdown
+### OPA Request Form
+
+**Requester Name**: [Your Name]  
+**Date**: [Today’s Date]  
+**Priority**: [Low/Medium/High]  
+
+#### Terraform Resource/Configuration
+- **Resource Type**: [e.g., AWS S3 Bucket]  
+- **Configuration Example**: [Provide a snippet of the Terraform code]  
+
+#### Desired Conditions
+- **Condition 1**: [e.g., "All S3 buckets must have encryption enabled"]  
+- **Condition 2**: [e.g., "All S3 buckets must block public access"]  
+
+#### Examples
+- **Valid Configuration**: [Provide an example of a Terraform configuration that meets the conditions]  
+- **Invalid Configuration**: [Provide an example of a Terraform configuration that does NOT meet the conditions]  
+
+#### Additional Context
+- **Compliance Requirements**: [e.g., "Must comply with GDPR"]  
+- **Security Concerns**: [e.g., "Prevent accidental exposure of sensitive data"]  
+- **Other**: [Any other relevant information]  
 ```
-
-### 4. OPA Development Timeline
-- **Initial Review**: Upon receiving the request, the OPA team will acknowledge receipt and schedule a review.
-- **Development**: The OPA team will draft the policy and associated tests.
-- **Review & Feedback**: A review will be conducted with the requestor for validation and adjustments.
-- **Final Approval**: After testing in staging or local environments, the policy will be ready for deployment.
 
 ---
 
 ## OPA Writing Template
 
-To ensure consistency and maintainability of OPA policies, use the following template when writing OPA code.
+This template guides the OPA team in writing policies and tests. It ensures that all necessary elements are included, such as rules, test cases, and mock data.
 
+### 1. Policy Definition
 ```rego
-# Define the policy rule
 package terraform.policies
 
-# Main rule defining the policy
+# Define the policy rule
 allow {
-    input.resource_type == "aws_instance"
-    input.tags["Environment"] == "Production"
+    # Condition 1
+    # Condition 2
 }
 
-# Rego rule to check resource tag for production
-deny {
-    input.resource_type == "aws_instance"
-    not input.tags["Environment"]
+# Example: Ensure all S3 buckets have encryption enabled
+deny[msg] {
+    bucket := input.resource.aws_s3_bucket[name]
+    bucket.server_side_encryption_configuration == null
+    msg := sprintf("S3 bucket '%s' does not have encryption enabled", [name])
 }
+```
 
-# Optional: Helper functions for validation
-is_valid_instance_type(resource_type) {
-    resource_type == "t2.micro"  # Example of validation
-}
+### 2. Test Cases
+```rego
+package terraform.policies
 
-# Tests for the OPA rule
-test_allow {
-    input := {
-        "resource_type": "aws_instance",
-        "tags": {
-            "Environment": "Production"
+# Test valid configuration
+test_valid_config {
+    allow with input as {
+        "resource": {
+            "aws_s3_bucket": {
+                "example_bucket": {
+                    "server_side_encryption_configuration": {
+                        "rule": {
+                            "apply_server_side_encryption_by_default": {
+                                "sse_algorithm": "AES256"
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
-    allow with input as input
 }
 
-test_deny {
-    input := {
-        "resource_type": "aws_instance",
-        "tags": {}
+# Test invalid configuration
+test_invalid_config {
+    not allow with input as {
+        "resource": {
+            "aws_s3_bucket": {
+                "example_bucket": {
+                    "server_side_encryption_configuration": null
+                }
+            }
+        }
     }
-    deny with input as input
 }
 ```
 
-### Explanation:
-- **Main Policy Rule**: The `allow` rule defines what is considered valid behavior, whereas `deny` defines what is invalid.
-- **Helper Functions**: These are reusable functions that provide validation logic, such as checking for valid instance types.
-- **Tests**: The `test_allow` and `test_deny` sections simulate the inputs and validate the expected outputs.
-
----
-
-## Writing Valid and Effective OPAs
-
-When writing OPAs:
-1. **Keep it Simple**: Avoid complex, nested conditions that can be hard to maintain.
-2. **Be Descriptive**: Use comments and clear variable names to describe the purpose of each rule.
-3. **Edge Case Handling**: Consider edge cases and ensure they are covered by tests (e.g., missing or unexpected tags).
-4. **Test Coverage**: Include test cases for all possible scenarios to ensure that the OPA rule behaves correctly across various inputs.
-
----
-
-## Local and CI/CD Pipeline Execution Examples
-
-### Local Execution Example
-To test OPA locally, you can use the `opa` command-line tool:
-
-1. **Install OPA**:
-   - Download and install OPA from [OPA's website](https://www.openpolicyagent.org/docs/latest/getting-started/#1-download-opa).
-
-2. **Test Locally**:
-   - Save your policy (e.g., `policy.rego`) and a test input (e.g., `input.json`).
-   - Run the following command to test the policy:
-     ```bash
-     opa eval --data policy.rego --input input.json "data.terraform.policies.allow"
-     ```
-
-   This will evaluate the `allow` rule in the `terraform.policies` package.
-
-### CI/CD Pipeline Integration Example for AWS CodeBuild
-
-You can set up AWS CodeBuild to validate your Terraform code and OPA policies by using the `opa` command in a `buildspec.yml` file.
-
-#### 1. Prepare your `buildspec.yml`:
-The `buildspec.yml` file defines the commands AWS CodeBuild will execute during the build process. Below is an example `buildspec.yml` for validating Terraform code with OPA:
-
-```yaml
-version: 0.2
-
-phases:
-  install:
-    commands:
-      # Install OPA (Open Policy Agent)
-      - echo "Installing OPA..."
-      - curl -LO https://openpolicyagent.org/downloads/latest/opa_linux_amd64
-      - chmod +x opa_linux_amd64
-      - mv opa_linux_amd64 /usr/local/bin/opa
-      - echo "OPA installation complete."
-
-      # Install Terraform (if needed)
-      - echo "Installing Terraform..."
-      - curl -LO https://releases.hashicorp.com/terraform/1.4.6/terraform_1.4.6_linux_amd64.zip
-      - unzip terraform_1.4.6_linux_amd64.zip
-      - mv terraform /usr/local/bin/
-      - terraform --version
-      - echo "Terraform installation complete."
-
-  build:
-    commands:
-      # Initialize Terraform (this step is optional, depending on your project setup)
-      - echo "Initializing Terraform..."
-      - terraform init
-
-      # Validate Terraform configuration
-      - echo "Validating Terraform code..."
-      - terraform validate
-
-      # Assuming 'policy.rego' and 'terraform_input.json' are part of your repository:
-      - echo "Running OPA policy validation..."
-      - opa eval --data policy.rego --input terraform_input.json "data.terraform.policies.allow"
-
-      # If needed, you can also run Terraform plan to validate resources
-      - echo "Running Terraform plan..."
-      - terraform plan -out=tfplan
-
-  post_build:
-    commands:
-      - echo "Build complete. OPA validation passed!"
-      - echo "Terraform plan execution complete."
+### 3. Mock Data
+```json
+{
+    "resource": {
+        "aws_s3_bucket": {
+            "example_bucket": {
+                "server_side_encryption_configuration": null
+            }
+        }
+    }
+}
 ```
 
-#### Explanation of the `buildspec.yml`:
-1. **Install Phase**:
-   - Downloads and installs **OPA** (Open Policy Agent) and **Terraform** in the environment where CodeBuild will execute the build.
-   
-2. **Build Phase**:
-   - Runs `terraform init` to initialize Terraform (if required).
-   - Runs `terraform validate` to validate the Terraform configuration files.
-   - Runs the `opa eval` command to evaluate the `policy.rego` policy file against `terraform_input.json`, where `terraform_input.json` represents the mock data or the input configuration you're testing.
-   - Optionally, the build phase can also include a `terraform plan` command to simulate applying the Terraform configuration and view its effects (this is a good safety step before deployment).
+---
 
-3. **Post-Build Phase**:
-   - Outputs a confirmation message to indicate that the build, OPA validation, and Terraform plan ran successfully.
+## Local Execution Example
+
+### How to Test the OPA Policy Locally
+1. Save the OPA policy in a `.rego` file (e.g., `s3_encryption.rego`).
+2. Save the mock data in a `.json` file (e.g., `mock_data.json`).
+3. Run the following command in your terminal:
+   ```bash
+   opa eval --data s3_encryption.rego --input mock_data.json "data.terraform.policies.allow"
+   ```
+   - This command checks whether the mock data complies with the policy.
 
 ---
 
-#### 2. Integrating into AWS CodePipeline:
+## Frequently Asked Questions (FAQ)
 
-After creating the `buildspec.yml` file, ensure it's placed at the root of your repository. AWS CodeBuild will use this file to execute the build.
+### 1. What if I don’t know how to write Terraform configurations?
+- Provide as much detail as possible about the resource or configuration you want to evaluate. The OPA team can help refine your request.
 
-To integrate this into an AWS CodePipeline, follow these steps:
+### 2. How long does it take to develop an OPA policy?
+- Development time depends on the complexity of the request. Simple policies may take a few hours, while more complex ones may take several days.
 
-1. **Create a CodePipeline** (or update an existing one) that has:
-   - **Source Stage**: Pulls the latest code from a repository (e.g., GitHub, AWS CodeCommit).
-   - **Build Stage**: Uses the AWS CodeBuild project configured with the `buildspec.yml` file above.
+### 3. Can I test the OPA policy before it’s deployed?
+- Yes, you will have the opportunity to test the policy locally before it is finalized.
 
-2. **Create a CodeBuild Project**:
-   - In the AWS Management Console, go to **AWS CodeBuild** and create a new project.
-   - Under **Environment**, select the appropriate operating system and runtime (for example, `Ubuntu`).
-   - Under **Buildspec**, select "Use a buildspec file" and ensure the file is at the root of your repository (or you can specify a path to it).
-   - Connect your CodeBuild project to your **AWS CodePipeline**.
-
-3. **Define the Pipeline in CodePipeline**:
-   - **Source**: Set up a source stage for your repository.
-   - **Build**: Add a build stage where CodeBuild will execute the `buildspec.yml` file.
-
----
-
-#### 3. Optional: Artifact Output in CodeBuild:
-
-If you need to output any results from your validation, such as logs or reports, you can configure **artifacts** in CodeBuild. For example, modify the `buildspec.yml` to output logs:
-
-```yaml
-artifacts:
-  files:
-    - '**/*'
-  discard-paths: yes
-```
-
-This will include all files in the build directory as artifacts, which can be useful for storing the output logs or other relevant files for later reference.
+### 4. What if the OPA policy doesn’t work as expected?
+- Provide feedback to the OPA team, and they will address any issues.
 
 ---
 
 ## Conclusion
-With this configuration, every time CodePipeline triggers a build in CodeBuild, it will validate the Terraform configuration against the defined OPA policy using the `buildspec.yml`. This ensures that your Terraform configurations conform to the defined policies before being applied to the environment, thus enhancing security and compliance automation in your CI/CD pipeline.
+This document provides a clear and structured process for requesting and developing OPA policies for Terraform code and configurations. By following the provided templates and examples, you can ensure that your requests are completed efficiently and that the resulting policies meet your needs.
+
+---
