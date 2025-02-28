@@ -43,6 +43,30 @@ AWS S3 perms to read and delete buckets
 }
 ```
 
+def get_all_regions():
+    """Get a list of all AWS regions."""
+    ec2_client = boto3.client('ec2')
+    regions = ec2_client.describe_regions()
+    return [region['RegionName'] for region in regions['Regions']]
+
+def check_permissions(s3_client, bucket_names):
+    """
+    Check if the user has permissions to list and delete buckets.
+    Returns True if permissions are sufficient, False otherwise.
+    """
+    try:
+        # Check if the user can list buckets
+        s3_client.list_buckets()
+        
+        # Check if the user can access the specified buckets
+        for bucket_name in bucket_names:
+            s3_client.head_bucket(Bucket=bucket_name)
+            s3_client.list_objects_v2(Bucket=bucket_name, MaxKeys=1)
+        
+        return True
+    except Exception as e:
+        print(f"Permission check failed: {e}")
+        return False
 
 def bucket_exists(s3_client, bucket_name):
     """Check if the bucket exists."""
@@ -86,43 +110,51 @@ def confirm_action(prompt):
 
 def main(bucket_names):
     """Main function to handle bucket deletion."""
-    s3_client = boto3.client('s3')
+    regions = get_all_regions()
     
-    # Check if all specified buckets exist
-    non_existent_buckets = []
-    for bucket_name in bucket_names:
-        if not bucket_exists(s3_client, bucket_name):
-            non_existent_buckets.append(bucket_name)
-    
-    if non_existent_buckets:
-        print("\nThe following buckets do not exist or you do not have permission to access them:")
-        for bucket in non_existent_buckets:
-            print(f"- {bucket}")
-        print("Exiting script.")
-        sys.exit(1)
-    
-    # Check for non-empty buckets
-    non_empty_buckets = list_non_empty_buckets(s3_client, bucket_names)
-    
-    if non_empty_buckets:
-        print("\nThe following buckets are not empty:")
-        for bucket in non_empty_buckets:
-            print(f"- {bucket}")
-    else:
-        print("\nAll buckets are empty.")
-    
-    # Always ask for confirmation before deletion
-    if not confirm_action("\nDo you want to proceed with deletion? (yes/no): "):
-        print("Deletion aborted by user.")
-        return
-    
-    # Delete buckets
-    for bucket_name in bucket_names:
-        print(f"\nProcessing bucket: {bucket_name}")
-        if confirm_action(f"Are you sure you want to delete bucket '{bucket_name}'? (yes/no): "):
-            delete_bucket(s3_client, bucket_name)
+    for region in regions:
+        print(f"\nChecking region: {region}")
+        s3_client = boto3.client('s3', region_name=region)
+        
+        # Perform a preliminary permission check
+        if not check_permissions(s3_client, bucket_names):
+            print(f"Insufficient permissions in region {region}. Skipping this region.")
+            continue
+        
+        # Check if all specified buckets exist in this region
+        non_existent_buckets = []
+        for bucket_name in bucket_names:
+            if not bucket_exists(s3_client, bucket_name):
+                non_existent_buckets.append(bucket_name)
+        
+        if non_existent_buckets:
+            print(f"The following buckets do not exist in region {region}:")
+            for bucket in non_existent_buckets:
+                print(f"- {bucket}")
+            continue  # Skip to the next region
+        
+        # Check for non-empty buckets
+        non_empty_buckets = list_non_empty_buckets(s3_client, bucket_names)
+        
+        if non_empty_buckets:
+            print(f"The following buckets are not empty in region {region}:")
+            for bucket in non_empty_buckets:
+                print(f"- {bucket}")
         else:
-            print(f"Skipping deletion of bucket '{bucket_name}'.")
+            print(f"All specified buckets are empty in region {region}.")
+        
+        # Always ask for confirmation before deletion
+        if not confirm_action(f"\nDo you want to proceed with deletion in region {region}? (yes/no): "):
+            print(f"Deletion aborted for region {region}.")
+            continue
+        
+        # Delete buckets
+        for bucket_name in bucket_names:
+            print(f"\nProcessing bucket: {bucket_name} in region {region}")
+            if confirm_action(f"Are you sure you want to delete bucket '{bucket_name}' in region {region}? (yes/no): "):
+                delete_bucket(s3_client, bucket_name)
+            else:
+                print(f"Skipping deletion of bucket '{bucket_name}' in region {region}.")
 
 if __name__ == "__main__":
     # Set up argument parsing
