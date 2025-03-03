@@ -2,232 +2,155 @@ import boto3
 import argparse
 import sys
 
-```
-AWS S3 perms to read and delete buckets
+def confirm_action(prompt):
+    """Ask the user to confirm an action. Exit the script if the user says 'no'."""
+    while True:
+        choice = input(prompt).strip().lower()
+        if choice == 'yes':
+            return True
+        elif choice == 'no':
+            print("Delete operation aborted. No changes made.")
+            sys.exit()  # Exit the script entirely
+        else:
+            print("Invalid input. Please enter 'yes' or 'no'.")
 
-
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListAllMyBuckets",
-                "s3:GetBucketLocation"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:ListBucket",
-                "s3:GetObject",
-                "s3:DeleteObject",
-                "s3:DeleteObjectVersion",
-                "s3:ListBucketVersions",
-                "s3:BypassGovernanceRetention",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention"
-            ],
-            "Resource": [
-                "arn:aws:s3:::example-bucket-name",
-                "arn:aws:s3:::example-bucket-name/*"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Action": "s3:DeleteBucket",
-            "Resource": "arn:aws:s3:::example-bucket-name"
-        }
-    ]
-}
-```
-
-def check_permissions(s3_client, bucket_names):
-    """
-    Check if the user has the required permissions to delete the specified buckets and their contents.
-    Returns True if permissions are sufficient, False otherwise.
-    """
-    required_permissions = [
-        "s3:ListBucket",
-        "s3:GetObject",
-        "s3:DeleteObject",
-        "s3:DeleteObjectVersion",
-        "s3:ListBucketVersions",
-        "s3:BypassGovernanceRetention",
-        "s3:PutObjectLegalHold",
-        "s3:PutObjectRetention",
-        "s3:DeleteBucket",
-        "s3:DeleteBucketPolicy",
-        "s3:ListAllMyBuckets",
-    ]
-    
+def delete_all_object_versions(s3_client, bucket_name):
+    """Delete all object versions and delete markers in the bucket."""
     try:
-        # Check if the user can list all buckets (s3:ListAllMyBuckets permission)
-        s3_client.list_buckets()
+        # List all object versions in the bucket
+        response = s3_client.list_object_versions(Bucket=bucket_name)
         
-        # Check if the user has permissions to delete the specified buckets and their contents
-        for bucket_name in bucket_names:
-            # Check if the user can access the bucket (s3:ListBucket permission)
-            s3_client.head_bucket(Bucket=bucket_name)
-            
-            # Check if the user can list objects in the bucket (s3:ListBucket permission)
-            s3_client.list_objects_v2(Bucket=bucket_name, MaxKeys=1)
-            
-            # Check if the user can list object versions (s3:ListBucketVersions permission)
-            s3_client.list_object_versions(Bucket=bucket_name, MaxKeys=1)
-            
-            # Check if the user can delete objects (s3:DeleteObject permission)
-            # This is a proxy check using delete operation on a non-existent object
-            s3_client.delete_object(Bucket=bucket_name, Key="non-existent-object")
-            
-            # Check if the user can delete object versions (s3:DeleteObjectVersion permission)
-            # This is a proxy check using delete operation on a non-existent object version
-            s3_client.delete_object(Bucket=bucket_name, Key="non-existent-object", VersionId="non-existent-version-id")
-            
-            # Check if the user can bypass governance retention (s3:BypassGovernanceRetention permission)
-            # This is a proxy check using a dummy object retention configuration
-            try:
-                s3_client.put_object_retention(
-                    Bucket=bucket_name,
-                    Key="non-existent-object",
-                    Retention={
-                        'Mode': 'GOVERNANCE',
-                        'RetainUntilDate': '2030-01-01T00:00:00Z'
-                    },
-                    BypassGovernanceRetention=True
-                )
-            except s3_client.exceptions.NoSuchKey:
-                pass  # Expected error since the object does not exist
-            
-            # Check if the user can put object legal holds (s3:PutObjectLegalHold permission)
-            try:
-                s3_client.put_object_legal_hold(
-                    Bucket=bucket_name,
-                    Key="non-existent-object",
-                    LegalHold={'Status': 'ON'}
-                )
-            except s3_client.exceptions.NoSuchKey:
-                pass  # Expected error since the object does not exist
-            
-            # Check if the user can put object retention (s3:PutObjectRetention permission)
-            try:
-                s3_client.put_object_retention(
-                    Bucket=bucket_name,
-                    Key="non-existent-object",
-                    Retention={
-                        'Mode': 'COMPLIANCE',
-                        'RetainUntilDate': '2030-01-01T00:00:00Z'
-                    }
-                )
-            except s3_client.exceptions.NoSuchKey:
-                pass  # Expected error since the object does not exist
+        # Counters for versions and delete markers
+        versions_deleted = 0
+        markers_deleted = 0
         
-        return True
+        # Delete all versions if confirmed
+        if 'Versions' in response:
+            print(f"Found {len(response['Versions'])} object versions in bucket '{bucket_name}'.")
+            if confirm_action("Do you want to delete all object versions? (yes/no): "):
+                for version in response['Versions']:
+                    s3_client.delete_object(
+                        Bucket=bucket_name,
+                        Key=version['Key'],
+                        VersionId=version['VersionId']
+                    )
+                    versions_deleted += 1
+                print(f"Deleted {versions_deleted} object versions.")
+        
+        # Delete all delete markers if confirmed
+        if 'DeleteMarkers' in response:
+            print(f"Found {len(response['DeleteMarkers'])} delete markers in bucket '{bucket_name}'.")
+            if confirm_action("Do you want to delete all delete markers? (yes/no): "):
+                for marker in response['DeleteMarkers']:
+                    s3_client.delete_object(
+                        Bucket=bucket_name,
+                        Key=marker['Key'],
+                        VersionId=marker['VersionId']
+                    )
+                    markers_deleted += 1
+                print(f"Deleted {markers_deleted} delete markers.")
+        
+        # Continue listing and deleting if there are more versions
+        while response.get('IsTruncated'):
+            response = s3_client.list_object_versions(
+                Bucket=bucket_name,
+                KeyMarker=response.get('NextKeyMarker'),
+                VersionIdMarker=response.get('NextVersionIdMarker')
+            )
+            
+            if 'Versions' in response:
+                print(f"Found {len(response['Versions'])} additional object versions in bucket '{bucket_name}'.")
+                if confirm_action("Do you want to delete these additional object versions? (yes/no): "):
+                    for version in response['Versions']:
+                        s3_client.delete_object(
+                            Bucket=bucket_name,
+                            Key=version['Key'],
+                            VersionId=version['VersionId']
+                        )
+                        versions_deleted += 1
+                    print(f"Deleted {len(response['Versions'])} additional object versions.")
+            
+            if 'DeleteMarkers' in response:
+                print(f"Found {len(response['DeleteMarkers'])} additional delete markers in bucket '{bucket_name}'.")
+                if confirm_action("Do you want to delete these additional delete markers? (yes/no): "):
+                    for marker in response['DeleteMarkers']:
+                        s3_client.delete_object(
+                            Bucket=bucket_name,
+                            Key=marker['Key'],
+                            VersionId=marker['VersionId']
+                        )
+                        markers_deleted += 1
+                    print(f"Deleted {len(response['DeleteMarkers'])} additional delete markers.")
+        
+        print(f"All object versions and delete markers processed for bucket: {bucket_name}")
     except Exception as e:
-        print(f"Permission check failed: {e}")
-        return False
+        print(f"Error deleting object versions in bucket {bucket_name}: {e}")
 
-def bucket_exists(s3_client, bucket_name):
-    """Check if the bucket exists."""
+def delete_all_objects(s3_client, bucket_name):
+    """Delete all objects in the bucket."""
     try:
-        s3_client.head_bucket(Bucket=bucket_name)
-        return True
-    except Exception as e:
-        # If the bucket does not exist or there's a permission issue, return False
-        return False
-
-def is_bucket_empty(s3_client, bucket_name):
-    """Check if the bucket is empty."""
-    try:
+        # List all objects in the bucket
         response = s3_client.list_objects_v2(Bucket=bucket_name)
-        return 'Contents' not in response
+        
+        # Counter for deleted objects
+        objects_deleted = 0
+        
+        if 'Contents' in response:
+            print(f"Found {len(response['Contents'])} objects in bucket '{bucket_name}'.")
+            if confirm_action("Do you want to delete all objects? (yes/no): "):
+                for obj in response['Contents']:
+                    s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                    objects_deleted += 1
+                print(f"Deleted {objects_deleted} objects.")
+        
+        # Continue listing and deleting if there are more objects
+        while response.get('IsTruncated'):
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                ContinuationToken=response.get('NextContinuationToken')
+            )
+            
+            if 'Contents' in response:
+                print(f"Found {len(response['Contents'])} additional objects in bucket '{bucket_name}'.")
+                if confirm_action("Do you want to delete these additional objects? (yes/no): "):
+                    for obj in response['Contents']:
+                        s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                        objects_deleted += 1
+                    print(f"Deleted {len(response['Contents'])} additional objects.")
+        
+        print(f"All objects processed for bucket: {bucket_name}")
     except Exception as e:
-        print(f"Error checking if bucket {bucket_name} is empty: {e}")
-        return False
+        print(f"Error deleting objects in bucket {bucket_name}: {e}")
 
 def delete_bucket(s3_client, bucket_name):
     """Delete the bucket."""
     try:
-        print(f"Deleting bucket: {bucket_name}")
-        s3_client.delete_bucket(Bucket=bucket_name)
-        print(f"Bucket {bucket_name} deleted successfully.")
+        if confirm_action(f"Are you sure you want to delete bucket '{bucket_name}'? (yes/no): "):
+            print(f"Deleting bucket: {bucket_name}")
+            s3_client.delete_bucket(Bucket=bucket_name)
+            print(f"Bucket {bucket_name} deleted successfully.")
     except Exception as e:
         print(f"Error deleting bucket {bucket_name}: {e}")
-
-def list_non_empty_buckets(s3_client, bucket_names):
-    """List buckets that are not empty."""
-    non_empty_buckets = []
-    for bucket_name in bucket_names:
-        if not is_bucket_empty(s3_client, bucket_name):
-            non_empty_buckets.append(bucket_name)
-    return non_empty_buckets
-
-def confirm_action(prompt):
-    """Ask the user to confirm an action."""
-    choice = input(prompt).strip().lower()
-    return choice == 'yes'
 
 def main(bucket_names):
     """Main function to handle bucket deletion."""
     s3_client = boto3.client('s3')
     
-    # Check if the user has the required permissions
-    if not check_permissions(s3_client, bucket_names):
-        print("\nYou do not have the required permissions to delete the specified buckets.")
-        print("Please ensure you have the following permissions:")
-        print("- s3:ListBucket")
-        print("- s3:GetObject")
-        print("- s3:DeleteObject")
-        print("- s3:DeleteObjectVersion")
-        print("- s3:ListBucketVersions")
-        print("- s3:BypassGovernanceRetention")
-        print("- s3:PutObjectLegalHold")
-        print("- s3:PutObjectRetention")
-        print("- s3:DeleteBucket")
-        print("- s3:DeleteBucketPolicy")
-        print("- s3:ListAllMyBuckets")
-        sys.exit(1)
-    
-    # Check if all specified buckets exist
-    non_existent_buckets = []
-    for bucket_name in bucket_names:
-        if not bucket_exists(s3_client, bucket_name):
-            non_existent_buckets.append(bucket_name)
-    
-    if non_existent_buckets:
-        print("\nThe following buckets do not exist or you do not have permission to access them:")
-        for bucket in non_existent_buckets:
-            print(f"- {bucket}")
-        print("Exiting script.")
-        sys.exit(1)
-    
-    # Check for non-empty buckets
-    non_empty_buckets = list_non_empty_buckets(s3_client, bucket_names)
-    
-    if non_empty_buckets:
-        print("\nThe following buckets are not empty:")
-        for bucket in non_empty_buckets:
-            print(f"- {bucket}")
-    else:
-        print("\nAll buckets are empty.")
-    
-    # Always ask for confirmation before deletion
-    if not confirm_action("\nDo you want to proceed with deletion? (yes/no): "):
-        print("Deletion aborted by user.")
-        return
-    
-    # Delete buckets
     for bucket_name in bucket_names:
         print(f"\nProcessing bucket: {bucket_name}")
-        if confirm_action(f"Are you sure you want to delete bucket '{bucket_name}'? (yes/no): "):
-            delete_bucket(s3_client, bucket_name)
-        else:
-            print(f"Skipping deletion of bucket '{bucket_name}'.")
+        
+        # Delete all object versions and delete markers
+        delete_all_object_versions(s3_client, bucket_name)
+        
+        # Delete all objects
+        delete_all_objects(s3_client, bucket_name)
+        
+        # Delete the bucket
+        delete_bucket(s3_client, bucket_name)
 
 if __name__ == "__main__":
     # Set up argument parsing
-    parser = argparse.ArgumentParser(description="Delete AWS S3 buckets after checking if they are empty.")
+    parser = argparse.ArgumentParser(description="Delete AWS S3 buckets and their contents.")
     parser.add_argument(
         "buckets",
         nargs="+",
