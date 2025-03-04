@@ -1,6 +1,7 @@
 import boto3
 import argparse
 import sys
+from botocore.exceptions import ClientError
 
 def confirm_action(prompt):
     """Ask the user to confirm an action. Exit the script if the user says 'no'."""
@@ -13,6 +14,26 @@ def confirm_action(prompt):
             sys.exit()  # Exit the script entirely
         else:
             print("Invalid input. Please enter 'yes' or 'no'.")
+
+def bucket_exists(s3_client, bucket_name):
+    """Check if the bucket exists and is accessible."""
+    try:
+        s3_client.head_bucket(Bucket=bucket_name)
+        return True
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == '404':
+            # Bucket does not exist
+            print(f"Bucket '{bucket_name}' does not exist. Skipping to the next bucket.")
+            return False
+        elif error_code == '403':
+            # Bucket exists, but access is forbidden
+            print(f"Access to bucket '{bucket_name}' is forbidden. Skipping to the next bucket.")
+            return False
+        else:
+            # Handle other errors
+            print(f"Error checking bucket '{bucket_name}': {e}")
+            return False
 
 def delete_all_object_versions(s3_client, bucket_name):
     """Delete all object versions and delete markers in the bucket."""
@@ -138,6 +159,10 @@ def main(bucket_names):
     
     for bucket_name in bucket_names:
         print(f"\nProcessing bucket: {bucket_name}")
+        
+        # Check if the bucket exists and is accessible
+        if not bucket_exists(s3_client, bucket_name):
+            continue  # Skip to the next bucket
         
         # Delete all object versions and delete markers
         delete_all_object_versions(s3_client, bucket_name)
