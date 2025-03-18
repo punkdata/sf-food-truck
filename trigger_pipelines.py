@@ -78,10 +78,14 @@ def monitor_pipeline(pipeline_name, execution_id, state):
     retry_delay = 10  # Delay between retries in seconds
     while retry_count > 0:
         try:
+            # Add a small delay before checking execution status
+            time.sleep(5)  # Give time for the pipeline execution to appear
+
             response = client.get_pipeline_execution(
                 pipelineName=pipeline_name,
                 pipelineExecutionId=execution_id
             )
+
             status = response['pipelineExecution']['status']
             
             if status in ['Succeeded', 'Failed']:
@@ -193,10 +197,10 @@ def main(pipeline_file, max_pipelines):
     generate_completion_report(state)
     generate_markdown_report(state)
 
-    # Delete pipeline state file after reports are generated
+    # Remove the state file after reports are generated
     if Path(STATE_FILE).exists():
-        logging.info(f"Deleting {STATE_FILE} after report generation.")
         Path(STATE_FILE).unlink()
+        logging.info(f"Deleted state file: {STATE_FILE}")
 
 def generate_completion_report(state):
     """Generate a JSON completion report from the state."""
@@ -234,8 +238,8 @@ def generate_markdown_report(state):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Trigger and monitor AWS CodePipelines.")
-    parser.add_argument('--pipelines', type=str, required=True, help="Path to a file containing a list of pipeline names to trigger.")
-    parser.add_argument('--max_pipelines', type=int, default=4, choices=range(1, 5), help="Maximum number of pipelines to trigger simultaneously (1-4). Default is 4.")
+    parser.add_argument('pipeline_file', type=str, help="File containing the list of pipeline names.")
+    parser.add_argument('--max_pipelines', type=int, default=4, help="Maximum number of pipelines to trigger simultaneously.")
     args = parser.parse_args()
 
-    main(args.pipelines, args.max_pipelines)
+    main(args.pipeline_file, args.max_pipelines)
