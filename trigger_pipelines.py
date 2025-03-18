@@ -238,8 +238,8 @@ def generate_markdown_report(state):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Trigger and monitor AWS CodePipelines.")
-    parser.add_argument('pipeline_file', type=str, help="File containing the list of pipeline names.")
-    parser.add_argument('--max_pipelines', type=int, default=4, help="Maximum number of pipelines to trigger simultaneously.")
+    parser.add_argument('--pipelines', type=str, required=True, help="Path to a file containing a list of pipeline names to trigger.")
+    parser.add_argument('--max_pipelines', type=int, default=4, choices=range(1, 5), help="Maximum number of pipelines to trigger simultaneously (1-4). Default is 4.")
     args = parser.parse_args()
 
-    main(args.pipeline_file, args.max_pipelines)
+    main(args.pipelines, args.max_pipelines)
