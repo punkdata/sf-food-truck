@@ -3,7 +3,6 @@ import argparse
 import time
 import logging
 import json
-import os  # Import os module to delete files
 from threading import Thread, Lock
 from pathlib import Path
 from datetime import datetime
@@ -60,7 +59,6 @@ def trigger_pipeline(pipeline_name):
         response = client.start_pipeline_execution(name=pipeline_name)
         execution_id = response['pipelineExecutionId']
         logging.info(f"Triggered pipeline: {pipeline_name} with execution ID: {execution_id}")
-        time.sleep(5)  # Allow AWS time to initialize the pipeline execution
         return execution_id
     except Exception as e:
         logging.error(f"Failed to trigger pipeline {pipeline_name}: {str(e)}")
@@ -77,6 +75,7 @@ def monitor_pipeline(pipeline_name, execution_id, state):
     logging.info(f"Started monitoring pipeline: {pipeline_name} (Execution ID: {execution_id})")
 
     retry_count = 5  # Number of retries before giving up
+    retry_delay = 10  # Delay between retries in seconds
     while retry_count > 0:
         try:
             response = client.get_pipeline_execution(
@@ -106,11 +105,12 @@ def monitor_pipeline(pipeline_name, execution_id, state):
                 save_state(state)
                 break
             else:
-                time.sleep(10)  # Wait for 10 seconds before checking again
+                logging.info(f"Pipeline {pipeline_name} is still in progress. Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)  # Wait before checking again
         except client.exceptions.PipelineExecutionNotFoundException as e:
-            logging.error(f"Execution not found for pipeline {pipeline_name} (Execution ID: {execution_id}). Retrying...")
+            logging.warning(f"Execution not found for pipeline {pipeline_name} (Execution ID: {execution_id}). Retrying in {retry_delay} seconds...")
             retry_count -= 1
-            time.sleep(5)  # Wait before retrying
+            time.sleep(retry_delay)  # Wait before retrying
         except Exception as e:
             logging.error(f"Error monitoring pipeline {pipeline_name}: {str(e)}")
             with lock:
@@ -193,10 +193,10 @@ def main(pipeline_file, max_pipelines):
     generate_completion_report(state)
     generate_markdown_report(state)
 
-    # Delete the pipeline state file after generating the reports
+    # Delete pipeline state file after reports are generated
     if Path(STATE_FILE).exists():
-        os.remove(STATE_FILE)
-        logging.info(f"Deleted the pipeline state file: {STATE_FILE}")
+        logging.info(f"Deleting {STATE_FILE} after report generation.")
+        Path(STATE_FILE).unlink()
 
 def generate_completion_report(state):
     """Generate a JSON completion report from the state."""
