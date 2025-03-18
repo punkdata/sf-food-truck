@@ -75,7 +75,7 @@ def monitor_pipeline(pipeline_name, execution_id, state):
     logging.info(f"Started monitoring pipeline: {pipeline_name} (Execution ID: {execution_id})")
 
     retry_count = 5  # Number of retries before giving up
-    retry_delay = 10  # Delay between retries in seconds
+    retry_delay = 20  # Delay between retries in seconds
     while retry_count > 0:
         try:
             # Add a small delay before checking execution status
@@ -131,8 +131,8 @@ def monitor_pipeline(pipeline_name, execution_id, state):
 def main(pipeline_file, max_pipelines):
     """Main function to trigger and monitor pipelines."""
     # Validate max_pipelines
-    if max_pipelines < 1 or max_pipelines > 4:
-        logging.error("max_pipelines must be between 1 and 4.")
+    if max_pipelines < 1 or max_pipelines > 6:
+        logging.error("max_pipelines must be between 1 and 6.")
         return
 
     # Read pipeline names from the file
@@ -239,7 +239,7 @@ def generate_markdown_report(state):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Trigger and monitor AWS CodePipelines.")
     parser.add_argument('--pipelines', type=str, required=True, help="Path to a file containing a list of pipeline names to trigger.")
-    parser.add_argument('--max_pipelines', type=int, default=4, choices=range(1, 5), help="Maximum number of pipelines to trigger simultaneously (1-4). Default is 4.")
+    parser.add_argument('--max_pipelines', type=int, default=6, choices=range(1, 7), help="Maximum number of pipelines to trigger simultaneously (1-6). Default is 6.")
     args = parser.parse_args()
 
     main(args.pipelines, args.max_pipelines)
