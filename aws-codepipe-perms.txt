@@ -1,20 +1,15 @@
 {
   "Effect": "Allow",
   "Action": [
-    "ecr:CreateRepository",
-    "ecr:DescribeRepositories",
-    "ecr:DeleteRepository",
-    "ecr:DeleteRepositoryPolicy",
-    "ecr:SetRepositoryPolicy",
-    "ecr:PutImage",
-    "ecr:BatchDeleteImage",
-    "ecr:BatchGetImage",
-    "ecr:InitiateLayerUpload",
-    "ecr:UploadLayerPart",
-    "ecr:CompleteLayerUpload",
-    "ecr:ListImages",
-    "ecr:DescribeImages",
-    "ecr:DeleteImage"
+    "codepipeline:CreatePipeline",
+    "codepipeline:GetPipeline",
+    "codepipeline:UpdatePipeline",
+    "codepipeline:DeletePipeline",
+    "codepipeline:StartPipelineExecution",
+    "codepipeline:StopPipelineExecution",
+    "codepipeline:GetPipelineExecution",
+    "codepipeline:ListPipelines",
+    "codepipeline:GetPipelineState"
   ],
   "Resource": "*"
 }
@@ -33,7 +28,6 @@
   ],
   "Resource": "*"
 }
-
 
 {
   "Effect": "Allow",
