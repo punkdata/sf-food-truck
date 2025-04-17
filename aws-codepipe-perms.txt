@@ -1,0 +1,84 @@
+{
+  "Effect": "Allow",
+  "Action": [
+    "ecr:CreateRepository",
+    "ecr:DescribeRepositories",
+    "ecr:DeleteRepository",
+    "ecr:DeleteRepositoryPolicy",
+    "ecr:SetRepositoryPolicy",
+    "ecr:PutImage",
+    "ecr:BatchDeleteImage",
+    "ecr:BatchGetImage",
+    "ecr:InitiateLayerUpload",
+    "ecr:UploadLayerPart",
+    "ecr:CompleteLayerUpload",
+    "ecr:ListImages",
+    "ecr:DescribeImages",
+    "ecr:DeleteImage"
+  ],
+  "Resource": "*"
+}
+
+{
+  "Effect": "Allow",
+  "Action": [
+    "codebuild:CreateProject",
+    "codebuild:UpdateProject",
+    "codebuild:DeleteProject",
+    "codebuild:StartBuild",
+    "codebuild:BatchGetBuilds",
+    "codebuild:StopBuild",
+    "codebuild:ListProjects",
+    "codebuild:BatchGetProjects"
+  ],
+  "Resource": "*"
+}
+
+
+{
+  "Effect": "Allow",
+  "Action": [
+    "ecr:CreateRepository",
+    "ecr:DescribeRepositories",
+    "ecr:DeleteRepository",
+    "ecr:DeleteRepositoryPolicy",
+    "ecr:SetRepositoryPolicy",
+    "ecr:PutImage",
+    "ecr:BatchDeleteImage",
+    "ecr:BatchGetImage",
+    "ecr:InitiateLayerUpload",
+    "ecr:UploadLayerPart",
+    "ecr:CompleteLayerUpload",
+    "ecr:ListImages",
+    "ecr:DescribeImages",
+    "ecr:DeleteImage"
+  ],
+  "Resource": "*"
+}
+
+Addtional ECR perms (if needed)
+
+{
+  "Effect": "Allow",
+  "Action": [
+    "ecr:PutLifecyclePolicy",
+    "ecr:GetLifecyclePolicy",
+    "ecr:DeleteLifecyclePolicy",
+    "ecr:TagResource",
+    "ecr:UntagResource",
+    "ecr:ListTagsForResource"
+  ],
+  "Resource": "*"
+}
+
+Strategy Without PassRole
+If you're trying to avoid granting PassRole for security reasons, here’s how you might work around it:
+
+Pre-provision service roles (e.g., CodePipelineServiceRole, CodeBuildServiceRole).
+
+Ensure these roles have correct trust policies (for codepipeline.amazonaws.com or codebuild.amazonaws.com).
+
+Let IAM role reference those roles by ARN in pipeline/build project creation.
+
+Do not allow users modify the role field, and skip PassRole entirely.
+
