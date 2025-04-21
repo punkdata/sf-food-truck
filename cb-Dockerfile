@@ -1,25 +1,53 @@
-# Start from AWS CodeBuild Standard 5.0 image (Amazon Linux 2)
+# Start from AWS CodeBuild Standard 5.0 image
 FROM public.ecr.aws/codebuild/standard:5.0
 
-# Install dependencies and tools
+# Update & install system dependencies
 RUN yum -y update && \
-    yum -y install curl unzip python3-pip jq git && \
-    pip3 install --upgrade pip
+    yum -y install curl unzip python3-pip jq git gcc-c++ make yum-utils tar && \
+    pip3 install --upgrade pip setuptools wheel && \
+    yum clean all
 
-# ---- Install TFLint ----
+# --- Install Node.js (npm + npm audit) ---
+RUN curl -sL https://rpm.nodesource.com/setup_18.x | bash - && \
+    yum -y install nodejs && \
+    npm --version
+
+# --- Install pip-audit ---
+RUN pip3 install pip-audit
+
+# --- Install TFLint ---
 RUN curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
 
-# ---- Install Semgrep ----
+# --- Install Semgrep ---
 RUN pip3 install semgrep
 
-# ---- Install Checkov ----
+# --- Install Checkov ---
 RUN pip3 install checkov
+
+# --- Install Bandit ---
+RUN pip3 install bandit
+
+# --- Install Grype ---
+RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+# --- Install Trivy ---
+RUN rpm --import https://aquasecurity.github.io/trivy-repo/RPM-GPG-KEY-trivy && \
+    curl -sfL https://aquasecurity.github.io/trivy-repo/rpm/releases/$(rpm -E %fedora)/trivy.repo -o /etc/yum.repos.d/trivy.repo && \
+    yum -y install trivy && \
+    trivy --version
+
+# --- Install Terraform CLI ---
+ENV TERRAFORM_VERSION=1.6.6
+RUN curl -sLo terraform.zip https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+    unzip terraform.zip && \
+    mv terraform /usr/local/bin/ && \
+    terraform -version && \
+    rm -f terraform.zip
 
 # Clean up
 RUN yum clean all && rm -rf /var/cache/yum
 
-# Default working directory
+# Default CodeBuild working directory
 WORKDIR /code
 
-# Entrypoint for CodeBuild to override via buildspec
 ENTRYPOINT ["/bin/bash"]
