@@ -1,0 +1,25 @@
+# Start from AWS CodeBuild Standard 5.0 image (Amazon Linux 2)
+FROM public.ecr.aws/codebuild/standard:5.0
+
+# Install dependencies and tools
+RUN yum -y update && \
+    yum -y install curl unzip python3-pip jq git && \
+    pip3 install --upgrade pip
+
+# ---- Install TFLint ----
+RUN curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+
+# ---- Install Semgrep ----
+RUN pip3 install semgrep
+
+# ---- Install Checkov ----
+RUN pip3 install checkov
+
+# Clean up
+RUN yum clean all && rm -rf /var/cache/yum
+
+# Default working directory
+WORKDIR /code
+
+# Entrypoint for CodeBuild to override via buildspec
+ENTRYPOINT ["/bin/bash"]
