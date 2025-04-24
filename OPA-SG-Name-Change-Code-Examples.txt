@@ -1,0 +1,166 @@
+### Rego Policy
+package terraform.analysis.sg_no_rename
+
+deny[msg] {
+  input.resource_changes[_] == rc
+  rc.type == "aws_security_group"
+  rc.change.actions == ["update"]
+  old_name := rc.change.before.name
+  new_name := rc.change.after.name
+  old_name != new_name
+  msg := sprintf("Renaming security group '%s' to '%s' is not allowed. Create a new security group instead.", [old_name, new_name])
+}
+
+
+### Rego Test
+
+package terraform.analysis.sg_no_rename
+
+test_deny_sg_rename_attached_to_vpc_endpoint {
+  deny[_] == "Renaming security group 'old-vpce-sg' to 'new-vpce-sg' is not allowed. Create a new security group instead."
+  input := {
+    "resource_changes": [
+      {
+        "type": "aws_security_group",
+        "change": {
+          "actions": ["update"],
+          "before": { "name": "old-vpce-sg" },
+          "after": { "name": "new-vpce-sg" }
+        }
+      }
+    ]
+  }
+}
+
+test_allow_new_sg_for_vpc_endpoint {
+  not deny[_]
+  input := {
+    "resource_changes": [
+      {
+        "type": "aws_security_group",
+        "change": {
+          "actions": ["create"],
+          "before": null,
+          "after": { "name": "vpce-secure-sg" }
+        }
+      }
+    ]
+  }
+}
+
+test_allow_attachment_of_sg_to_vpc_endpoint {
+  not deny[_]
+  input := {
+    "resource_changes": [
+      {
+        "type": "aws_vpc_endpoint",
+        "change": {
+          "actions": ["update"],
+          "before": {
+            "security_group_ids": ["sg-abc123"]
+          },
+          "after": {
+            "security_group_ids": ["sg-abc123", "sg-def456"]
+          }
+        }
+      }
+    ]
+  }
+}
+
+### mock.json data for Rego testing 
+
+{
+  "resource_changes": [
+    {
+      "type": "aws_security_group",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "old-vpce-sg"
+        },
+        "after": {
+          "name": "new-vpce-sg"
+        }
+      }
+    },
+    {
+      "type": "aws_security_group",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "vpce-secure-sg"
+        }
+      }
+    },
+    {
+      "type": "aws_vpc_endpoint",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "security_group_ids": ["sg-abc123"]
+        },
+        "after": {
+          "security_group_ids": ["sg-abc123", "sg-def456"]
+        }
+      }
+    }
+  ]
+}
+
+
+### Valid TF Code
+resource "aws_security_group" "vpce_sg" {
+  name        = "new-vpce-access-sg"
+  description = "Allow VPC endpoint HTTPS access"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+}
+
+resource "aws_vpc_endpoint" "s3_endpoint" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [
+    aws_security_group.vpce_sg.id,    # Add the new SG to the assets
+    aws_security_group.existing_internal_sg.id
+  ]
+  private_dns_enabled = true
+}
+
+### Invlid TF Code
+resource "aws_vpc_endpoint" "s3_endpoint" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [
+    aws_security_group.vpce_sg.id,
+    aws_security_group.existing_internal_sg.id
+  ]
+  private_dns_enabled = true
+}
+
+
+# Invalid TF Code
+resource "aws_security_group" "vpce_sg" {
+  name        = "renamed-old-vpce-access-sg"  # ❌ This name was changed from "old-vpce-access-sg"
+  description = "Attempting to rename SG attached to a VPC endpoint"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+}
+
