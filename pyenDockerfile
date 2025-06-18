@@ -1,0 +1,83 @@
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
+
+ENV PYTHON_VERSION=3.12.3 \
+    SEMGREP_VERSION=1.125.0 \
+    CHECKOV_VERSION=3.2.442 \
+    BANDIT_VERSION=1.7.7 \
+    PIP_AUDIT_VERSION=2.7.1 \
+    TRIVY_VERSION=0.50.1 \
+    GRYPE_VERSION=0.74.0 \
+    TFLINT_VERSION=0.58.0 \
+    OPA_VERSION=1.5.1 \
+    TERRAFORM_VERSION=1.12.1 \
+    OPT_AFT_BIN=/opt/aft/bin \
+    PYENV_ROOT=/opt/aft/pyenv \
+    PATH="/opt/aft/pyenv/bin:/opt/aft/pyenv/shims:/opt/aft/bin:/usr/local/go/bin:$PATH"
+
+# Install OS dependencies
+RUN dnf update -y && \
+    dnf install -y git gcc jq make zlib-devel bzip2 bzip2-devel readline-devel \
+        sqlite sqlite-devel openssl-devel libffi-devel wget unzip tar && \
+    dnf clean all
+
+# Install pyenv + pyenv-virtualenv
+RUN git clone https://github.com/pyenv/pyenv.git $PYENV_ROOT && \
+    git clone https://github.com/pyenv/pyenv-virtualenv.git $PYENV_ROOT/plugins/pyenv-virtualenv && \
+    echo 'eval "$(pyenv init -)"' >> /etc/profile.d/pyenv.sh && \
+    echo 'eval "$(pyenv virtualenv-init -)"' >> /etc/profile.d/pyenv.sh && \
+    /bin/bash -c "source /etc/profile.d/pyenv.sh && pyenv install ${PYTHON_VERSION} && pyenv global ${PYTHON_VERSION}"
+
+# Create base venv and install shared tools
+RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
+    pyenv exec pip install --upgrade pip && \
+    pyenv exec pip install bandit==${BANDIT_VERSION} pip-audit==${PIP_AUDIT_VERSION}"
+
+# Create virtualenv for semgrep
+RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
+    pyenv virtualenv ${PYTHON_VERSION} semgrep-env && \
+    pyenv activate semgrep-env && \
+    pip install --upgrade pip && pip install semgrep==${SEMGREP_VERSION} && \
+    pyenv deactivate"
+
+# Create virtualenv for checkov
+RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
+    pyenv virtualenv ${PYTHON_VERSION} checkov-env && \
+    pyenv activate checkov-env && \
+    pip install --upgrade pip && pip install checkov==${CHECKOV_VERSION} && \
+    pyenv deactivate"
+
+# Install Trivy
+RUN wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | \
+    sh -s -- -b ${OPT_AFT_BIN} v${TRIVY_VERSION}
+
+# Install Grype
+RUN wget -qO- https://raw.githubusercontent.com/anchore/grype/main/install.sh | \
+    sh -s -- -b ${OPT_AFT_BIN} v${GRYPE_VERSION}
+
+# Install TFLint
+RUN wget -q https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip -O /tmp/tflint.zip && \
+    unzip -q /tmp/tflint.zip -d ${OPT_AFT_BIN} && rm /tmp/tflint.zip
+
+# Install OPA
+RUN wget -q "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64" -O ${OPT_AFT_BIN}/opa && \
+    chmod +x ${OPT_AFT_BIN}/opa
+
+# Install Terraform
+RUN wget -q "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -O /tmp/terraform.zip && \
+    unzip -q /tmp/terraform.zip -d ${OPT_AFT_BIN} && rm /tmp/terraform.zip
+
+# Install Go
+ENV GOLANG_VERSION=1.24.4
+RUN wget -qO- "https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local
+
+# Create scanner user
+RUN useradd -m scanner && \
+    chown -R scanner:scanner /home/scanner /opt/aft
+
+USER scanner
+WORKDIR /home/scanner
+
+COPY --chown=scanner scan_pyenv.sh /home/scanner/scan_pyenv.sh
+RUN chmod +x /home/scanner/scan_pyenv.sh
+
+ENTRYPOINT ["/home/scanner/scan_pyenv.sh"]
