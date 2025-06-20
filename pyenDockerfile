@@ -2,10 +2,11 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
 ENV PYTHON_VERSION=3.12.3 \
     SEMGREP_VERSION=1.125.0 \
+    CHECKOV_VERSION=3.2.442 \
     BANDIT_VERSION=1.7.7 \
     PIP_AUDIT_VERSION=2.7.1 \
-    TRIVY_VERSION=0.50.1 \
-    GRYPE_VERSION=0.74.0 \
+    TRIVY_VERSION=0.63.0 \
+    GRYPE_VERSION=0.94.0 \
     TFLINT_VERSION=0.58.0 \
     OPA_VERSION=1.5.1 \
     TERRAFORM_VERSION=1.12.1 \
@@ -36,6 +37,13 @@ RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
     pyenv virtualenv ${PYTHON_VERSION} semgrep-env && \
     pyenv activate semgrep-env && \
     pip install --upgrade pip && pip install semgrep==${SEMGREP_VERSION} && \
+    pyenv deactivate"
+
+# Create virtualenv for checkov
+RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
+    pyenv virtualenv ${PYTHON_VERSION} checkov-env && \
+    pyenv activate checkov-env && \
+    pip install --upgrade pip && pip install checkov==${CHECKOV_VERSION} && \
     pyenv deactivate"
 
 # Install Trivy
