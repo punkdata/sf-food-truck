@@ -2,7 +2,6 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
 ENV PYTHON_VERSION=3.12.3 \
     SEMGREP_VERSION=1.125.0 \
-    CHECKOV_VERSION=3.2.442 \
     BANDIT_VERSION=1.7.7 \
     PIP_AUDIT_VERSION=2.7.1 \
     TRIVY_VERSION=0.50.1 \
@@ -39,13 +38,6 @@ RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
     pip install --upgrade pip && pip install semgrep==${SEMGREP_VERSION} && \
     pyenv deactivate"
 
-# Create virtualenv for checkov
-RUN /bin/bash -c "source /etc/profile.d/pyenv.sh && \
-    pyenv virtualenv ${PYTHON_VERSION} checkov-env && \
-    pyenv activate checkov-env && \
-    pip install --upgrade pip && pip install checkov==${CHECKOV_VERSION} && \
-    pyenv deactivate"
-
 # Install Trivy
 RUN wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | \
     sh -s -- -b ${OPT_AFT_BIN} v${TRIVY_VERSION}
@@ -66,9 +58,15 @@ RUN wget -q "https://github.com/open-policy-agent/opa/releases/download/v${OPA_V
 RUN wget -q "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -O /tmp/terraform.zip && \
     unzip -q /tmp/terraform.zip -d ${OPT_AFT_BIN} && rm /tmp/terraform.zip
 
-# Install Go
-ENV GOLANG_VERSION=1.24.4
-RUN wget -qO- "https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz" | tar -xz -C /usr/local
+# Install npm-audit
+RUN curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - && \
+    dnf install -y nodejs && \
+    npm install -g npm@latest && \
+    npm install -g npm-audit && \
+    ln -s $(which npm-audit) /opt/aft/npm-audit && \
+    node -v && \
+    npm -v && \
+    npm-audit --version
 
 # Create scanner user
 RUN useradd -m scanner && \
