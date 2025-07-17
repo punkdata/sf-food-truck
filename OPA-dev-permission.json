@@ -175,6 +175,17 @@
         "events:PutRule",
         "events:PutTargets",
         "events:RemoveTargets",
+        "firehose:CreateDeliveryStream",
+        "firehose:DeleteDeliveryStream",
+        "firehose:DescribeDeliveryStream",
+        "firehose:ListDeliveryStreams",
+        "firehose:PutRecord",
+        "firehose:PutRecordBatch",
+        "firehose:StartDeliveryStreamEncryption",
+        "firehose:StopDeliveryStreamEncryption",
+        "firehose:TagDeliveryStream",
+        "firehose:UntagDeliveryStream",
+        "firehose:UpdateDestination",
         "iam:Get*",
         "iam:GetRole",
         "iam:List*",
@@ -186,8 +197,11 @@
         "kms:DescribeKey",
         "kms:Encrypt",
         "kms:GenerateDataKey",
+        "kms:GenerateDataKeyWithoutPlaintext",
         "kms:Get*",
         "kms:List*",
+        "kms:ListAliases",
+        "kms:ListGrants",
         "kms:ReEncrypt*",
         "lambda:CreateFunction",
         "lambda:DeleteFunction",
@@ -289,6 +303,21 @@
         "xray:PutTraceSegments"
       ],
       "Resource": "arn:aws:*:4444555566667777:*/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:GenerateDataKeyWithoutPlaintext",
+        "kms:ReEncrypt*",
+        "kms:DescribeKey",
+        "kms:CreateGrant",
+        "kms:ListGrants",
+        "kms:ListAliases"
+      ],
+      "Resource": "arn:aws:kms:*:4444555566667777:key/*"
     }
   ]
 }
