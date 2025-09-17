@@ -1,5 +1,5 @@
 data "kubernetes_service" "app" {
-  metadata{
+  metadata {
     name = kubernetes_service.app.metadata[0].name
   }
 }

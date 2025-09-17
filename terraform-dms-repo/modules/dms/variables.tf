@@ -138,7 +138,7 @@ variable "migration_type" {
 variable "table_mappings_json" {
   description = "JSON string for table mappings"
   type        = string
-  default     = jsonencode({
+  default = jsonencode({
     rules = [{
       "rule-type"      = "selection",
       "rule-id"        = "1",
@@ -152,7 +152,7 @@ variable "table_mappings_json" {
 variable "replication_task_settings_json" {
   description = "JSON string for replication task settings"
   type        = string
-  default     = jsonencode({
+  default = jsonencode({
     FullLoadSettings = {
       TargetTablePrepMode             = "DROP_AND_CREATE"
       StopTaskCachedChangesApplied    = false

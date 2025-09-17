@@ -6,8 +6,8 @@ resource "aws_kms_key" "codebuild_artifacts" {
 
 # 2. Encrypted S3 Bucket for Artifacts
 resource "aws_s3_bucket" "codebuild_artifacts" {
-  bucket         = "my-secure-codebuild-artifacts"
-  force_destroy  = true
+  bucket        = "my-secure-codebuild-artifacts"
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "s3_encryption" {
@@ -62,7 +62,7 @@ resource "aws_codebuild_project" "secure_project" {
     compute_type    = "BUILD_GENERAL1_MEDIUM"
     image           = "aws/codebuild/standard:7.0"
     type            = "LINUX_CONTAINER"
-    privileged_mode = false  # ✅ Compliant
+    privileged_mode = false # ✅ Compliant
   }
 
   source {

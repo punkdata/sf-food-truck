@@ -23,8 +23,8 @@ resource "aws_iam_policy" "codebuild_policy" {
     Version = "2012-10-17",
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = [
+        Effect = "Allow"
+        Action = [
           "ecr:GetAuthorizationToken",
           "ecr:BatchCheckLayerAvailability",
           "ecr:CompleteLayerUpload",
@@ -68,14 +68,14 @@ resource "aws_codebuild_project" "sre_build_container_image" {
   }
 
   environment {
-    compute_type        = "BUILD_GENERAL1_SMALL"
-    image               = "aws/codebuild/standard:7.0"
-    type                = "LINUX_CONTAINER"
-    privileged_mode     = true
-  
+    compute_type    = "BUILD_GENERAL1_SMALL"
+    image           = "aws/codebuild/standard:7.0"
+    type            = "LINUX_CONTAINER"
+    privileged_mode = true
+
     environment_variable {
-          name  = "REPOSITORY_URI"
-          value = aws_ecr_repository.sre.repository_url
+      name  = "REPOSITORY_URI"
+      value = aws_ecr_repository.sre.repository_url
     }
   }
 

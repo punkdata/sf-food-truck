@@ -28,14 +28,14 @@ resource "aws_ecr_repository" "sre" {
 # Lifecycle policy to clean untagged images
 data "aws_ecr_lifecycle_policy_document" "ecr" {
   rule {
-    priority = 1
-    description   = "Expire untagged images after 30 days"
+    priority    = 1
+    description = "Expire untagged images after 30 days"
 
     selection {
-      tag_status    = "untagged"
-      count_type    = "sinceImagePushed"
-      count_unit    = "days"
-      count_number  = 30
+      tag_status   = "untagged"
+      count_type   = "sinceImagePushed"
+      count_unit   = "days"
+      count_number = 30
     }
 
     action {

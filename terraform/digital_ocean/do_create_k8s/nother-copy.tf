@@ -7,14 +7,14 @@ terraform {
       source = "digitalocean/digitalocean"
     }
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = "2.17.0"
-    }    
+    }
     local = {
       source = "hashicorp/local"
     }
   }
- 
+
   backend "remote" {
     organization = "circleci-demo"
     workspaces {
@@ -52,7 +52,7 @@ resource "digitalocean_kubernetes_cluster" "k8s_cluster" {
 resource "digitalocean_kubernetes_cluster" "test_clusters" {
   name   = var.cluster_name
   region = var.do_data_center
-  count       = length((var.cluster_name))
+  count  = length((var.cluster_name))
   # HINT: If this breaks, you can use `var.do_k8s_slug_ver`, but uncomment it
   #       on `variables.tf` file in this directory.
   version = data.digitalocean_kubernetes_versions.latest.latest_version
@@ -71,7 +71,7 @@ resource "digitalocean_kubernetes_cluster" "test_clusters" {
 resource "digitalocean_kubernetes_cluster" "test_again_buster_clusters" {
   name   = var.cluster_name
   region = var.do_data_center
-  count       = length((var.cluster_name))
+  count  = length((var.cluster_name))
   # HINT: If this breaks, you can use `var.do_k8s_slug_ver`, but uncomment it
   #       on `variables.tf` file in this directory.
   version = data.digitalocean_kubernetes_versions.latest.latest_version

@@ -31,7 +31,7 @@ resource "aws_dms_replication_instance" "this" {
   kms_key_arn                 = var.replication_instance_kms_key_arn
   tags                        = var.tags
 
-  engine_version              = var.engine_version
+  engine_version = var.engine_version
 }
 
 # ───────── Source endpoint ─────────

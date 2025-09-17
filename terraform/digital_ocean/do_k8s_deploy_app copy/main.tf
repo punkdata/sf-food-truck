@@ -7,9 +7,9 @@ terraform {
       source = "digitalocean/digitalocean"
     }
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = "2.17.0"
-    }    
+    }
     local = {
       source = "hashicorp/local"
     }
@@ -24,5 +24,5 @@ terraform {
 }
 
 provider "kubernetes" {
- config_path = "~/.kube/config"
+  config_path = "~/.kube/config"
 }
