@@ -1,0 +1,11 @@
+{
+  "TargetMetadata": {
+    "TargetSchema": "",
+    "SupportLobs": true,
+    "FullLobMode": true
+  },
+  "ChangeDataCaptureSettings": {
+    "CaptureDDL": true,
+    "StopTaskCachedChangesApplied": false
+  }
+}
