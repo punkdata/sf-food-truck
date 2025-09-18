@@ -4,6 +4,11 @@ variable "region" {
   default     = "us-east-1"
 }
 
+variable "vpc_id" {
+  description = "The VPC ID where the DMS replication instance will live"
+  type        = string
+}
+
 variable "master_secret_name" {
   description = "Name of the existing master secret (looked up by dms_user)"
   type        = string
@@ -27,11 +32,6 @@ variable "name_prefix" {
 variable "subnet_ids" {
   type        = list(string)
   description = "List of subnet IDs for the DMS replication subnet group"
-}
-
-variable "vpc_security_group_ids" {
-  type        = list(string)
-  description = "List of security group IDs for the DMS replication instance"
 }
 
 variable "replication_instance_class" {
