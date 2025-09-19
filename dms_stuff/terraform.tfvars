@@ -1,5 +1,5 @@
-region             = "us-east-1"
-vpc_id             = "vpc-12345678"
+region = "us-east-1"
+vpc_id = "vpc-12345678"
 
 master_secret_name = "master_secret"
 src_secret_key     = "src_postgres"

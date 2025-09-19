@@ -2,7 +2,7 @@ provider "aws" {
   region = var.region
 }
 
-# Security Group for DMS
+# Security Group for DMS Replication Instance
 resource "aws_security_group" "dms_sg" {
   name        = "${var.name_prefix}dms-sg"
   description = "Security group for DMS replication instance"
@@ -13,7 +13,7 @@ resource "aws_security_group" "dms_sg" {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"] # adjust for production!
   }
 
   egress {
@@ -35,7 +35,7 @@ data "aws_secretsmanager_secret_version" "dms_user" {
   secret_id = data.aws_secretsmanager_secret.dms_user.id
 }
 
-# Create derived source secret
+# Derived source secret
 resource "aws_secretsmanager_secret" "src" {
   name = "${var.name_prefix}${var.src_secret_key}-dms-secret"
   tags = var.tags
@@ -46,7 +46,7 @@ resource "aws_secretsmanager_secret_version" "src" {
   secret_string = jsonencode(jsondecode(data.aws_secretsmanager_secret_version.dms_user.secret_string)[var.src_secret_key])
 }
 
-# Create derived target secret
+# Derived target secret
 resource "aws_secretsmanager_secret" "tgt" {
   name = "${var.name_prefix}${var.tgt_secret_key}-dms-secret"
   tags = var.tags
@@ -57,7 +57,7 @@ resource "aws_secretsmanager_secret_version" "tgt" {
   secret_string = jsonencode(jsondecode(data.aws_secretsmanager_secret_version.dms_user.secret_string)[var.tgt_secret_key])
 }
 
-# IAM role for DMS to access secrets
+# IAM role for DMS secrets access
 data "aws_iam_policy_document" "dms_assume" {
   statement {
     effect = "Allow"
@@ -77,14 +77,14 @@ resource "aws_iam_role" "dms_secrets" {
 }
 
 resource "aws_iam_role_policy" "dms_secrets_access" {
-  name   = "${var.name_prefix}dms-secrets-access"
-  role   = aws_iam_role.dms_secrets.id
+  name = "${var.name_prefix}dms-secrets-access"
+  role = aws_iam_role.dms_secrets.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
         Resource = [
           aws_secretsmanager_secret.src.arn,
           aws_secretsmanager_secret.tgt.arn
@@ -94,9 +94,9 @@ resource "aws_iam_role_policy" "dms_secrets_access" {
   })
 }
 
-# Call the module
+# Call the DMS Module
 module "dms" {
-  source = "../dms-module" # adjust path if needed
+  source = "../dms-module" # adjust path
 
   name_prefix                = var.name_prefix
   subnet_ids                 = var.subnet_ids
@@ -125,9 +125,9 @@ module "dms" {
 
   replication_tasks = {
     full_load = {
-      source_endpoint_id       = "src1"
-      target_endpoint_id       = "tgt1"
-      migration_type           = "full-load"
+      source_endpoint_id = "src1"
+      target_endpoint_id = "tgt1"
+      migration_type     = "full-load"
       table_mappings = {
         rules = [
           {
@@ -144,8 +144,8 @@ module "dms" {
 
   premigration_assessments = {
     assess1 = {
-      source_endpoint_id  = "src1"
-      target_endpoint_id  = "tgt1"
+      source_endpoint_id = "src1"
+      target_endpoint_id = "tgt1"
       table_mappings = {
         rules = [
           {
