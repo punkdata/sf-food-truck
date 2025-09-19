@@ -1,61 +1,47 @@
-provider "aws" {
-  region = "us-west-2"
-}
+############################################
+# VARIABLES
+############################################
 
 variable "prefix_name" {
-  description = "Lowercase, hyphenized prefix used to name DMS resources (applies to instance, log group, S3, etc.)."
+  description = "Lowercase, hyphenized prefix used to name DMS resources."
   type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", var.prefix_name))
-    error_message = "prefix_name must be lowercase letters, digits, and hyphens only, and cannot start/end with a hyphen."
-  }
-
-  validation {
-    condition     = !can(regex("--", var.prefix_name))
-    error_message = "prefix_name cannot contain consecutive hyphens ('--')."
-  }
-
-  validation {
-    condition     = length(var.prefix_name) <= 50
-    error_message = "prefix_name must be 50 characters or fewer."
-  }
 }
 
 variable "vpc_id" {
-  description = "VPC ID where the DMS replication instance and security group will be created."
+  description = "VPC ID where the DMS replication instance will be deployed."
   type        = string
 }
 
 variable "subnet_ids" {
-  description = "Subnet IDs for the DMS replication subnet group."
+  description = "List of subnet IDs for the DMS replication subnet group."
   type        = list(string)
 }
 
 variable "tags" {
-  description = "Tags applied to all resources (must include Environment, AIT, Repo, Owner)."
+  description = "Tags applied to all resources. Must include Environment, AIT, Repo, Owner."
   type        = map(string)
-
-  validation {
-    condition     = alltrue([for k in ["Environment", "AIT", "Repo", "Owner"] : contains(keys(var.tags), k)])
-    error_message = "tags must include Environment, AIT, Repo, and Owner."
-  }
 }
 
+variable "source_db_identifier" {
+  description = "RDS identifier for the source database."
+  type        = string
+}
 
-provider "aws" {
-  region = "us-east-1"
+variable "target_db_identifier" {
+  description = "RDS identifier for the target database."
+  type        = string
 }
 
 ############################################
-# SECURITY GROUP FOR DMS
+# SECURITY GROUP FOR DMS INSTANCE
 ############################################
+
 resource "aws_security_group" "dms" {
   name        = "${var.prefix_name}-dms-sg"
   description = "Security group for DMS replication instance"
   vpc_id      = var.vpc_id
 
-  # Safe default: allow all egress
+  # Allow all egress
   egress {
     from_port   = 0
     to_port     = 0
@@ -63,7 +49,7 @@ resource "aws_security_group" "dms" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Example: allow PostgreSQL ingress (replace with real DB CIDR or SG)
+  # Example: allow PostgreSQL ingress
   ingress {
     from_port   = 5432
     to_port     = 5432
@@ -77,13 +63,74 @@ resource "aws_security_group" "dms" {
 }
 
 ############################################
+# DATA SOURCES — EXISTING SECRETS & RDS
+############################################
+
+# Existing secret that stores the shared DMS user password
+data "aws_secretsmanager_secret" "dms_user" {
+  name = "dms_user"
+}
+
+data "aws_secretsmanager_secret_version" "dms_user" {
+  secret_id = data.aws_secretsmanager_secret.dms_user.id
+}
+
+# Look up source RDS instance
+data "aws_db_instance" "source" {
+  db_instance_identifier = var.source_db_identifier
+}
+
+# Look up target RDS instance
+data "aws_db_instance" "target" {
+  db_instance_identifier = var.target_db_identifier
+}
+
+############################################
+# CREATE SECRETS FOR DMS ENDPOINTS (DEV/TEST)
+############################################
+
+resource "aws_secretsmanager_secret" "source_pg" {
+  name = "${var.prefix_name}-srcpg"
+  tags = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "source_pg" {
+  secret_id = aws_secretsmanager_secret.source_pg.id
+  secret_string = jsonencode({
+    username = "dms_user"
+    password = jsondecode(data.aws_secretsmanager_secret_version.dms_user.secret_string).password
+    engine   = "postgres"
+    host     = data.aws_db_instance.source.address
+    port     = 5432
+    dbname   = data.aws_db_instance.source.db_name
+  })
+}
+
+resource "aws_secretsmanager_secret" "target_pg" {
+  name = "${var.prefix_name}-tgtpg"
+  tags = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "target_pg" {
+  secret_id = aws_secretsmanager_secret.target_pg.id
+  secret_string = jsonencode({
+    username = "dms_user"
+    password = jsondecode(data.aws_secretsmanager_secret_version.dms_user.secret_string).password
+    engine   = "postgres"
+    host     = data.aws_db_instance.target.address
+    port     = 5432
+    dbname   = data.aws_db_instance.target.db_name
+  })
+}
+
+############################################
 # MODULE USAGE
 ############################################
+
 module "dms" {
-  source = "../.."   # adjust path if needed
+  source = "../.." # adjust path to module
 
-  prefix_name = var.prefix_name
-
+  prefix_name            = var.prefix_name
   subnet_ids             = var.subnet_ids
   vpc_security_group_ids = [aws_security_group.dms.id]
 
@@ -98,24 +145,40 @@ module "dms" {
   ]
 
   log_retention_days = 14
-  enable_versioning  = true
+
+  endpoints = {
+    source_pg = {
+      endpoint_type       = "source"
+      engine_name         = "postgres"
+      secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
+    }
+    target_pg = {
+      endpoint_type       = "target"
+      engine_name         = "postgres"
+      secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
+    }
+  }
 
   tags = var.tags
 }
 
 ############################################
-# OUTPUTS FOR TESTING
+# OUTPUTS
 ############################################
+
 output "dms_outputs" {
   description = "Key outputs from the DMS module"
   value = {
-    kms_key_arn              = module.dms.kms_key_arn
-    kms_alias                = module.dms.kms_alias
-    s3_assessment_bucket     = module.dms.s3_assessment_bucket
-    cloudwatch_log_group     = module.dms.cloudwatch_log_group
-    replication_instance     = module.dms.replication_instance_id
-    replication_instance_arn = module.dms.replication_instance_arn
-    execution_role_arn       = module.dms.execution_role_arn
-    strict_roles             = module.dms.strict_role_arns
+    kms_key_arn               = module.dms.kms_key_arn
+    kms_alias                 = module.dms.kms_alias
+    s3_assessment_bucket      = module.dms.s3_assessment_bucket
+    s3_assessment_logs_bucket = module.dms.s3_assessment_logs_bucket
+    cloudwatch_log_group      = module.dms.cloudwatch_log_group
+    replication_instance      = module.dms.replication_instance_id
+    replication_instance_arn  = module.dms.replication_instance_arn
+    execution_role_arn        = module.dms.execution_role_arn
+    strict_roles              = module.dms.strict_roles
+    endpoint_arns             = module.dms.endpoint_arns
   }
 }
+

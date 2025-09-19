@@ -3,8 +3,9 @@
 ############################################
 
 variable "prefix_name" {
-  description = "Lowercase, hyphenized prefix for naming DMS resources (used in IDs, KMS alias, log group, S3 bucket)."
+  description = "Lowercase, hyphenized prefix for naming DMS resources."
   type        = string
+  nullable    = false
 
   validation {
     condition     = can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", var.prefix_name))
@@ -23,15 +24,9 @@ variable "prefix_name" {
 }
 
 variable "tags" {
-  description = <<EOT
-Tags to apply to all resources.
-Must include the following keys:
-- Environment → lifecycle stage (dev/staging/prod)
-- AIT         → business/application identifier
-- Repo        → full URL of the code repository (e.g., https://github.com/org/repo-name)
-- Owner       → responsible team or individual
-EOT
-  type = map(string)
+  description = "Tags for all resources. Must include Environment, AIT, Repo, Owner."
+  type        = map(string)
+  nullable    = false
 
   validation {
     condition     = alltrue([for k in ["Environment", "AIT", "Repo", "Owner"] : contains(keys(var.tags), k)])
@@ -40,69 +35,68 @@ EOT
 }
 
 variable "create_dms_roles" {
-  description = <<EOT
-List of strict AWS DMS service roles to create.
-If empty, the module assumes the roles already exist.
-
-Available values:
-- dms-vpc-role              → Required for DMS to create/manage ENIs in your VPC.
-- dms-cloudwatch-logs-role  → Required for DMS to publish logs to CloudWatch Logs.
-- dms-secrets-mgr-role      → Required for DMS to read connection details from AWS Secrets Manager.
-EOT
-  type    = list(string)
-  default = []
+  description = "List of strict AWS DMS roles to create: dms-vpc-role, dms-cloudwatch-logs-role, dms-secrets-mgr-role."
+  type        = list(string)
+  default     = []
 }
 
 variable "iam_role_path" {
-  description = "IAM path for created DMS roles (OPA requires /service-role/ by default)."
+  description = "IAM path for created DMS roles."
   type        = string
   default     = "/service-role/"
 }
 
 variable "log_retention_days" {
-  description = "Number of days to retain DMS CloudWatch Logs."
+  description = "Retention in days for CloudWatch Logs."
   type        = number
   default     = 30
-
-  validation {
-    condition     = var.log_retention_days >= 7 && var.log_retention_days <= 3653
-    error_message = "log_retention_days must be between 7 and 3653 (inclusive)."
-  }
-}
-
-variable "enable_versioning" {
-  description = "Enable versioning on the S3 assessment bucket."
-  type        = bool
-  default     = false
 }
 
 variable "subnet_ids" {
   description = "List of subnet IDs for the DMS replication subnet group."
   type        = list(string)
+  nullable    = false
 }
 
 variable "vpc_security_group_ids" {
-  description = "List of VPC security groups to attach to the replication instance."
+  description = "Security groups for the replication instance."
   type        = list(string)
   default     = []
 }
 
 variable "instance_class" {
-  description = "DMS replication instance class."
+  description = "Replication instance class."
   type        = string
   default     = "dms.t3.medium"
 }
 
 variable "allocated_storage" {
-  description = "Allocated storage (in GB) for the DMS replication instance."
+  description = "Replication instance storage in GB."
   type        = number
   default     = 100
 }
 
 variable "multi_az" {
-  description = "Launch DMS replication instance with Multi-AZ."
+  description = "Multi-AZ deployment."
   type        = bool
   default     = false
+}
+
+variable "endpoints" {
+  description = <<EOT
+Map of DMS endpoints to create.
+Each key is the endpoint name, and the value must include:
+- endpoint_type       = "source" or "target"
+- engine_name         = e.g., "postgres", "mysql", etc.
+- secrets_manager_arn = ARN of an AWS Secrets Manager secret containing DB creds
+EOT
+  type = map(object({
+    endpoint_type       = string
+    engine_name         = string
+    secrets_manager_arn = string
+  }))
+  default  = {}
+  nullable = false
 }
 
 ############################################
@@ -110,7 +104,11 @@ variable "multi_az" {
 ############################################
 
 locals {
-  name_prefix = "${var.prefix_name}-dms"
+  name_prefix = var.prefix_name
+
+  logs_service_principal = format("logs.%s.amazonaws.com", data.aws_region.current.id)
+  s3_service_principal   = format("s3.%s.amazonaws.com", data.aws_region.current.id)
+  dms_service_principal  = format("dms.%s.amazonaws.com", data.aws_region.current.id)
 }
 
 data "aws_region" "current" {}
@@ -142,14 +140,69 @@ data "aws_iam_policy_document" "kms_key_policy" {
     }
     resources = ["*"]
   }
+
+  statement {
+    sid    = "AllowCloudWatchLogsUseOfTheKey"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    principals {
+      type        = "Service"
+      identifiers = [local.logs_service_principal]
+    }
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowS3UseOfTheKey"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    principals {
+      type        = "Service"
+      identifiers = [local.s3_service_principal]
+    }
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowDMSUseOfTheKey"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    principals {
+      type        = "Service"
+      identifiers = [local.dms_service_principal]
+    }
+    resources = ["*"]
+  }
 }
 
 resource "aws_kms_key" "dms" {
-  description             = "Customer-managed CMK for AWS DMS components (instance, endpoints, logs, S3)."
-  deletion_window_in_days = 7
+  description             = "CMK for DMS components."
+  deletion_window_in_days = 30
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.kms_key_policy.json
   tags                    = var.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_kms_alias" "dms" {
@@ -158,7 +211,7 @@ resource "aws_kms_alias" "dms" {
 }
 
 ############################################
-# IAM — STRICT AWS ROLES
+# IAM — ASSUME ROLE POLICY
 ############################################
 
 data "aws_iam_policy_document" "dms_assume_role" {
@@ -171,88 +224,73 @@ data "aws_iam_policy_document" "dms_assume_role" {
   }
 }
 
-# VPC Role
-resource "aws_iam_role" "dms_vpc_role" {
-  count              = contains(var.create_dms_roles, "dms-vpc-role") ? 1 : 0
-  name               = "dms-vpc-role"
+############################################
+# IAM — STRICT ROLES
+############################################
+
+resource "aws_iam_role" "strict" {
+  for_each           = toset(var.create_dms_roles)
+  name               = each.key
   assume_role_policy = data.aws_iam_policy_document.dms_assume_role.json
   path               = var.iam_role_path
   tags               = var.tags
 }
 
-resource "aws_iam_role_policy" "dms_vpc_role_policy" {
-  count = aws_iam_role.dms_vpc_role.count
-  name  = "${var.prefix_name}-dms-vpc-role-policy"
-  role  = aws_iam_role.dms_vpc_role[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = [
-        "ec2:Describe*",
-        "ec2:CreateNetworkInterface",
-        "ec2:DeleteNetworkInterface",
-        "ec2:ModifyNetworkInterfaceAttribute"
-      ]
-      Resource = "*"
-    }]
-  })
+data "aws_iam_policy_document" "dms_vpc_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:Describe*",
+      "ec2:CreateNetworkInterface",
+      "ec2:DeleteNetworkInterface",
+      "ec2:ModifyNetworkInterfaceAttribute"
+    ]
+    resources = ["*"]
+  }
 }
 
-# CloudWatch Logs Role
-resource "aws_iam_role" "dms_logs_role" {
-  count              = contains(var.create_dms_roles, "dms-cloudwatch-logs-role") ? 1 : 0
-  name               = "dms-cloudwatch-logs-role"
-  assume_role_policy = data.aws_iam_policy_document.dms_assume_role.json
-  path               = var.iam_role_path
-  tags               = var.tags
+resource "aws_iam_role_policy" "dms_vpc_role" {
+  count  = contains(var.create_dms_roles, "dms-vpc-role") ? 1 : 0
+  name   = "${var.prefix_name}-dms-vpc-role-policy"
+  role   = aws_iam_role.strict["dms-vpc-role"].id
+  policy = data.aws_iam_policy_document.dms_vpc_role.json
 }
 
-resource "aws_iam_role_policy" "dms_logs_role_policy" {
-  count = aws_iam_role.dms_logs_role.count
-  name  = "${var.prefix_name}-dms-logs-role-policy"
-  role  = aws_iam_role.dms_logs_role[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ]
-      Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/dms/${local.name_prefix}:*"
-    }]
-  })
+data "aws_iam_policy_document" "dms_cloudwatch_logs_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/dms/${local.name_prefix}:*"]
+  }
 }
 
-# Secrets Manager Role
-resource "aws_iam_role" "dms_secrets_role" {
-  count              = contains(var.create_dms_roles, "dms-secrets-mgr-role") ? 1 : 0
-  name               = "dms-secrets-mgr-role"
-  assume_role_policy = data.aws_iam_policy_document.dms_assume_role.json
-  path               = var.iam_role_path
-  tags               = var.tags
+resource "aws_iam_role_policy" "dms_cloudwatch_logs_role" {
+  count  = contains(var.create_dms_roles, "dms-cloudwatch-logs-role") ? 1 : 0
+  name   = "${var.prefix_name}-dms-cloudwatch-logs-role-policy"
+  role   = aws_iam_role.strict["dms-cloudwatch-logs-role"].id
+  policy = data.aws_iam_policy_document.dms_cloudwatch_logs_role.json
 }
 
-resource "aws_iam_role_policy" "dms_secrets_role_policy" {
-  count = aws_iam_role.dms_secrets_role.count
-  name  = "${var.prefix_name}-dms-secrets-role-policy"
-  role  = aws_iam_role.dms_secrets_role[0].id
+data "aws_iam_policy_document" "dms_secrets_mgr_role" {
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["*"]
+  }
+}
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = "*"
-    }]
-  })
+resource "aws_iam_role_policy" "dms_secrets_mgr_role" {
+  count  = contains(var.create_dms_roles, "dms-secrets-mgr-role") ? 1 : 0
+  name   = "${var.prefix_name}-dms-secrets-mgr-role-policy"
+  role   = aws_iam_role.strict["dms-secrets-mgr-role"].id
+  policy = data.aws_iam_policy_document.dms_secrets_mgr_role.json
 }
 
 ############################################
-# IAM — CONSOLIDATED EXECUTION ROLE
+# IAM — EXECUTION ROLE
 ############################################
 
 resource "aws_iam_role" "dms_execution_role" {
@@ -262,56 +300,63 @@ resource "aws_iam_role" "dms_execution_role" {
   tags               = var.tags
 }
 
-resource "aws_iam_role_policy" "dms_execution_role_policy" {
-  name = "${var.prefix_name}-dms-execution-role-policy"
-  role = aws_iam_role.dms_execution_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # VPC Networking — must remain wildcard
-      {
-        Effect   = "Allow"
-        Action   = [
-          "ec2:Describe*",
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
-          "ec2:ModifyNetworkInterfaceAttribute"
-        ]
-        Resource = "*"
-      },
-      # CloudWatch Logs — scoped
-      {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "${aws_cloudwatch_log_group.dms.arn}:*"
-      },
-      # Secrets Manager — scoped later when endpoints are added
-      {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = "*"
-      },
-      # S3 Assessment Bucket — scoped
-      {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
-        Resource = [
-          aws_s3_bucket.assessment.arn,
-          "${aws_s3_bucket.assessment.arn}/*"
-        ]
-      },
-      # KMS CMK — scoped
-      {
-        Effect   = "Allow"
-        Action   = [
-          "kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*",
-          "kms:GenerateDataKey*", "kms:DescribeKey"
-        ]
-        Resource = aws_kms_key.dms.arn
-      }
+data "aws_iam_policy_document" "dms_execution_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:Describe*",
+      "ec2:CreateNetworkInterface",
+      "ec2:DeleteNetworkInterface",
+      "ec2:ModifyNetworkInterfaceAttribute"
     ]
-  })
+    resources = ["*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = ["${aws_cloudwatch_log_group.dms.arn}:*"]
+  }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:ListBucket"
+    ]
+    resources = [
+      aws_s3_bucket.assessment.arn,
+      "${aws_s3_bucket.assessment.arn}/*"
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    resources = [aws_kms_key.dms.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "dms_execution_role" {
+  name   = "${var.prefix_name}-dms-execution-role-policy"
+  role   = aws_iam_role.dms_execution_role.id
+  policy = data.aws_iam_policy_document.dms_execution_role.json
 }
 
 ############################################
@@ -323,12 +368,15 @@ resource "aws_cloudwatch_log_group" "dms" {
   retention_in_days = var.log_retention_days
   kms_key_id        = aws_kms_key.dms.arn
   tags              = var.tags
+
+  depends_on = [aws_kms_key.dms]
 }
 
 ############################################
-# S3 ASSESSMENT BUCKET
+# S3 BUCKETS
 ############################################
 
+# Main bucket
 resource "aws_s3_bucket" "assessment" {
   bucket        = "${var.prefix_name}-dms-assessments-${random_string.general_suffix.result}"
   force_destroy = false
@@ -338,7 +386,7 @@ resource "aws_s3_bucket" "assessment" {
 resource "aws_s3_bucket_versioning" "assessment" {
   bucket = aws_s3_bucket.assessment.id
   versioning_configuration {
-    status = var.enable_versioning ? "Enabled" : "Suspended"
+    status = "Enabled"
   }
 }
 
@@ -360,49 +408,104 @@ resource "aws_s3_bucket_public_access_block" "assessment" {
   restrict_public_buckets = true
 }
 
+data "aws_iam_policy_document" "assessment_policy" {
+  statement {
+    sid     = "EnforceTLSRequestsOnly"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.assessment.arn,
+      "${aws_s3_bucket.assessment.arn}/*"
+    ]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
 resource "aws_s3_bucket_policy" "assessment" {
   bucket = aws_s3_bucket.assessment.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "DenyUnencryptedUploads"
-        Effect   = "Deny"
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.assessment.arn}/*"
-        Condition = {
-          StringNotEquals = {
-            "s3:x-amz-server-side-encryption" = "aws:kms"
-          }
-        }
-        Principal = "*"
-      },
-      {
-        Sid      = "DenyInsecureTransport"
-        Effect   = "Deny"
-        Action   = "s3:*"
-        Resource = [
-          aws_s3_bucket.assessment.arn,
-          "${aws_s3_bucket.assessment.arn}/*"
-        ]
-        Condition = {
-          Bool = {
-            "aws:SecureTransport" = false
-          }
-        }
-        Principal = "*"
-      }
+  policy = data.aws_iam_policy_document.assessment_policy.json
+}
+
+# Logging bucket
+resource "aws_s3_bucket" "assessment_logs" {
+  bucket        = "${var.prefix_name}-dms-assessments-logs-${random_string.general_suffix.result}"
+  force_destroy = false
+  tags          = var.tags
+}
+
+resource "aws_s3_bucket_versioning" "assessment_logs" {
+  bucket = aws_s3_bucket.assessment_logs.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "assessment_logs" {
+  bucket = aws_s3_bucket.assessment_logs.id
+  rule {
+    apply_server_side_encryption_by_default {
+      kms_master_key_id = aws_kms_key.dms.arn
+      sse_algorithm     = "aws:kms"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "assessment_logs" {
+  bucket                  = aws_s3_bucket.assessment_logs.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+data "aws_iam_policy_document" "assessment_logs_policy" {
+  statement {
+    sid     = "EnforceTLSRequestsOnly"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.assessment_logs.arn,
+      "${aws_s3_bucket.assessment_logs.arn}/*"
     ]
-  })
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "assessment_logs" {
+  bucket = aws_s3_bucket.assessment_logs.id
+  policy = data.aws_iam_policy_document.assessment_logs_policy.json
+}
+
+# Enable logging on assessment bucket
+resource "aws_s3_bucket_logging" "assessment" {
+  bucket        = aws_s3_bucket.assessment.id
+  target_bucket = aws_s3_bucket.assessment_logs.id
+  target_prefix = "log/"
 }
 
 ############################################
-# DMS REPLICATION INSTANCE
+# DMS REPLICATION
 ############################################
 
 resource "aws_dms_replication_subnet_group" "this" {
   replication_subnet_group_id          = "${var.prefix_name}-dms-subnet-group"
-  replication_subnet_group_description = "Subnet group for DMS replication instance (${var.prefix_name})"
+  replication_subnet_group_description = "Subnet group for DMS replication instance"
   subnet_ids                           = var.subnet_ids
   tags                                 = var.tags
 }
@@ -422,53 +525,64 @@ resource "aws_dms_replication_instance" "this" {
 }
 
 ############################################
-# CORE OUTPUTS
+# DMS ENDPOINTS
+############################################
+
+resource "aws_dms_endpoint" "this" {
+  for_each = var.endpoints
+
+  endpoint_id         = "${var.prefix_name}-${each.key}"
+  endpoint_type       = each.value.endpoint_type
+  engine_name         = each.value.engine_name
+  secrets_manager_arn = each.value.secrets_manager_arn
+  kms_key_arn         = aws_kms_key.dms.arn
+  tags                = var.tags
+}
+
+############################################
+# OUTPUTS
 ############################################
 
 output "kms_key_arn" {
-  description = "ARN of the customer-managed KMS CMK for DMS."
-  value       = aws_kms_key.dms.arn
+  value = aws_kms_key.dms.arn
 }
 
 output "kms_alias" {
-  description = "Alias name of the KMS CMK."
-  value       = aws_kms_alias.dms.name
+  value = aws_kms_alias.dms.name
 }
 
 output "s3_assessment_bucket" {
-  description = "Name of the S3 bucket for DMS pre-migration assessments."
-  value       = aws_s3_bucket.assessment.bucket
+  value = aws_s3_bucket.assessment.bucket
+}
+
+output "s3_assessment_logs_bucket" {
+  value = aws_s3_bucket.assessment_logs.bucket
+}
+
+output "s3_assessment_logs_bucket_arn" {
+  value = aws_s3_bucket.assessment_logs.arn
 }
 
 output "cloudwatch_log_group" {
-  description = "Name of the CloudWatch Log Group for DMS replication tasks."
-  value       = aws_cloudwatch_log_group.dms.name
+  value = aws_cloudwatch_log_group.dms.name
 }
 
 output "replication_instance_id" {
-  description = "ID of the DMS replication instance."
-  value       = aws_dms_replication_instance.this.replication_instance_id
+  value = aws_dms_replication_instance.this.replication_instance_id
 }
 
 output "replication_instance_arn" {
-  description = "ARN of the DMS replication instance."
-  value       = aws_dms_replication_instance.this.replication_instance_arn
+  value = aws_dms_replication_instance.this.replication_instance_arn
 }
-
-############################################
-# IAM OUTPUTS
-############################################
 
 output "execution_role_arn" {
-  description = "ARN of the consolidated DMS execution role."
-  value       = aws_iam_role.dms_execution_role.arn
+  value = aws_iam_role.dms_execution_role.arn
 }
 
-output "strict_role_arns" {
-  description = "Map of strict AWS DMS roles created by this module (if any)."
-  value = {
-    vpc_role     = try(aws_iam_role.dms_vpc_role[0].arn, null)
-    logs_role    = try(aws_iam_role.dms_logs_role[0].arn, null)
-    secrets_role = try(aws_iam_role.dms_secrets_role[0].arn, null)
-  }
+output "strict_roles" {
+  value = { for k, r in aws_iam_role.strict : k => r.arn }
+}
+
+output "endpoint_arns" {
+  value = { for k, e in aws_dms_endpoint.this : k => e.endpoint_arn }
 }
