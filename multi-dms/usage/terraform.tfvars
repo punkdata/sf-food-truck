@@ -1,11 +1,11 @@
 prefix_name = "labnoc-app1"
 
+vpc_id = "vpc-12345678"
+
 subnet_ids = [
   "subnet-12345678",
   "subnet-87654321"
 ]
-
-vpc_security_group_ids = ["sg-abcdef123456"]
 
 tags = {
   Environment = "dev"
