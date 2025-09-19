@@ -420,3 +420,55 @@ resource "aws_dms_replication_instance" "this" {
   auto_minor_version_upgrade  = true
   tags                        = var.tags
 }
+
+############################################
+# CORE OUTPUTS
+############################################
+
+output "kms_key_arn" {
+  description = "ARN of the customer-managed KMS CMK for DMS."
+  value       = aws_kms_key.dms.arn
+}
+
+output "kms_alias" {
+  description = "Alias name of the KMS CMK."
+  value       = aws_kms_alias.dms.name
+}
+
+output "s3_assessment_bucket" {
+  description = "Name of the S3 bucket for DMS pre-migration assessments."
+  value       = aws_s3_bucket.assessment.bucket
+}
+
+output "cloudwatch_log_group" {
+  description = "Name of the CloudWatch Log Group for DMS replication tasks."
+  value       = aws_cloudwatch_log_group.dms.name
+}
+
+output "replication_instance_id" {
+  description = "ID of the DMS replication instance."
+  value       = aws_dms_replication_instance.this.replication_instance_id
+}
+
+output "replication_instance_arn" {
+  description = "ARN of the DMS replication instance."
+  value       = aws_dms_replication_instance.this.replication_instance_arn
+}
+
+############################################
+# IAM OUTPUTS
+############################################
+
+output "execution_role_arn" {
+  description = "ARN of the consolidated DMS execution role."
+  value       = aws_iam_role.dms_execution_role.arn
+}
+
+output "strict_role_arns" {
+  description = "Map of strict AWS DMS roles created by this module (if any)."
+  value = {
+    vpc_role     = try(aws_iam_role.dms_vpc_role[0].arn, null)
+    logs_role    = try(aws_iam_role.dms_logs_role[0].arn, null)
+    secrets_role = try(aws_iam_role.dms_secrets_role[0].arn, null)
+  }
+}
