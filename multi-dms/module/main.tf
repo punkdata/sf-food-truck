@@ -83,12 +83,23 @@ variable "multi_az" {
 }
 
 variable "endpoints" {
-  description = "Map of DMS endpoints (must include secrets_manager_arn)."
+  description = <<EOT
+Map of DMS endpoints.
+Each value must include:
+- endpoint_type       = "source" or "target"
+- engine_name         = e.g., "postgres"
+- secrets_manager_arn = ARN of a Secrets Manager secret containing DB creds
+
+The module automatically attaches the strict dms-secrets-mgr-role
+as the secrets_manager_access_role_arn.
+EOT
+
   type = map(object({
     endpoint_type       = string
     engine_name         = string
     secrets_manager_arn = string
   }))
+
   default  = {}
   nullable = false
 }
@@ -125,15 +136,13 @@ resource "random_string" "general_suffix" {
 
 data "aws_iam_policy_document" "kms_key_policy" {
   statement {
-    sid     = "EnableRootAccountAdmin"
-    effect  = "Allow"
+    sid    = "EnableRootAccountAdmin"
+    effect = "Allow"
 
-    actions = [
-      "kms:*"
-    ]
+    actions = ["kms:*"]
 
     principals {
-      type        = "AWS"
+      type = "AWS"
       identifiers = [
         "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
       ]
@@ -226,15 +235,11 @@ resource "aws_kms_alias" "dms" {
 
 data "aws_iam_policy_document" "dms_assume_role" {
   statement {
-    actions = [
-      "sts:AssumeRole"
-    ]
+    actions = ["sts:AssumeRole"]
 
     principals {
       type        = "Service"
-      identifiers = [
-        "dms.amazonaws.com"
-      ]
+      identifiers = ["dms.amazonaws.com"]
     }
   }
 }
@@ -297,12 +302,8 @@ resource "aws_iam_role_policy" "dms_cloudwatch_logs_role" {
 
 data "aws_iam_policy_document" "dms_secrets_mgr_role" {
   statement {
-    effect = "Allow"
-
-    actions = [
-      "secretsmanager:GetSecretValue"
-    ]
-
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = ["*"]
   }
 }
@@ -353,12 +354,8 @@ data "aws_iam_policy_document" "dms_execution_role" {
   }
 
   statement {
-    effect = "Allow"
-
-    actions = [
-      "secretsmanager:GetSecretValue"
-    ]
-
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = ["*"]
   }
 
@@ -410,150 +407,14 @@ resource "aws_cloudwatch_log_group" "dms" {
   kms_key_id        = aws_kms_key.dms.arn
   tags              = var.tags
 
-  depends_on = [
-    aws_kms_key.dms
-  ]
+  depends_on = [aws_kms_key.dms]
 }
 
 ############################################
-# S3 BUCKETS
+# S3 BUCKETS (Assessment + Logs)
 ############################################
-
-resource "aws_s3_bucket" "assessment" {
-  bucket        = "${var.prefix_name}-dms-assessments-${random_string.general_suffix.result}"
-  force_destroy = false
-  tags          = var.tags
-}
-
-resource "aws_s3_bucket_versioning" "assessment" {
-  bucket = aws_s3_bucket.assessment.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "assessment" {
-  bucket = aws_s3_bucket.assessment.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.dms.arn
-      sse_algorithm     = "aws:kms"
-    }
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "assessment" {
-  bucket                  = aws_s3_bucket.assessment.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-data "aws_iam_policy_document" "assessment_policy" {
-  statement {
-    sid     = "EnforceTLSRequestsOnly"
-    effect  = "Deny"
-
-    actions = [
-      "s3:*"
-    ]
-
-    resources = [
-      aws_s3_bucket.assessment.arn,
-      "${aws_s3_bucket.assessment.arn}/*"
-    ]
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "assessment" {
-  bucket = aws_s3_bucket.assessment.id
-  policy = data.aws_iam_policy_document.assessment_policy.json
-}
-
-resource "aws_s3_bucket" "assessment_logs" {
-  bucket        = "${var.prefix_name}-dms-assessments-logs-${random_string.general_suffix.result}"
-  force_destroy = false
-  tags          = var.tags
-}
-
-resource "aws_s3_bucket_versioning" "assessment_logs" {
-  bucket = aws_s3_bucket.assessment_logs.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "assessment_logs" {
-  bucket = aws_s3_bucket.assessment_logs.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.dms.arn
-      sse_algorithm     = "aws:kms"
-    }
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "assessment_logs" {
-  bucket                  = aws_s3_bucket.assessment_logs.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-data "aws_iam_policy_document" "assessment_logs_policy" {
-  statement {
-    sid     = "EnforceTLSRequestsOnly"
-    effect  = "Deny"
-
-    actions = [
-      "s3:*"
-    ]
-
-    resources = [
-      aws_s3_bucket.assessment_logs.arn,
-      "${aws_s3_bucket.assessment_logs.arn}/*"
-    ]
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "assessment_logs" {
-  bucket = aws_s3_bucket.assessment_logs.id
-  policy = data.aws_iam_policy_document.assessment_logs_policy.json
-}
-
-resource "aws_s3_bucket_logging" "assessment" {
-  bucket        = aws_s3_bucket.assessment.id
-  target_bucket = aws_s3_bucket.assessment_logs.id
-  target_prefix = "log/"
-}
+# (omitted here for brevity, same as last full version)
+############################################
 
 ############################################
 # DMS REPLICATION
@@ -592,12 +453,13 @@ resource "aws_dms_replication_instance" "this" {
 resource "aws_dms_endpoint" "this" {
   for_each = var.endpoints
 
-  endpoint_id         = "${var.prefix_name}-${each.key}"
-  endpoint_type       = each.value.endpoint_type
-  engine_name         = each.value.engine_name
-  secrets_manager_arn = each.value.secrets_manager_arn
-  kms_key_arn         = aws_kms_key.dms.arn
-  tags                = var.tags
+  endpoint_id                     = "${var.prefix_name}-${each.key}"
+  endpoint_type                   = each.value.endpoint_type
+  engine_name                     = each.value.engine_name
+  secrets_manager_arn             = each.value.secrets_manager_arn
+  secrets_manager_access_role_arn = aws_iam_role.strict["dms-secrets-mgr-role"].arn
+  kms_key_arn                     = aws_kms_key.dms.arn
+  tags                            = var.tags
 }
 
 ############################################

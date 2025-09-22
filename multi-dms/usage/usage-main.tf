@@ -114,12 +114,12 @@ module "dms" {
   log_retention_days = 14
 
   endpoints = {
-    source_pg = {
+    sourcepg = {
       endpoint_type       = "source"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
     }
-    target_pg = {
+    targetpg = {
       endpoint_type       = "target"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
