@@ -8,8 +8,13 @@ variable "prefix_name" {
   nullable    = false
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]*$", var.prefix_name))
-    error_message = "prefix_name must start with a letter, contain only lowercase letters, digits, and hyphens."
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", var.prefix_name))
+    error_message = "prefix_name must be lowercase letters, digits, and hyphens only, start/end with alphanumeric."
+  }
+
+  validation {
+    condition     = !can(regex("--", var.prefix_name))
+    error_message = "prefix_name cannot contain consecutive hyphens ('--')."
   }
 
   validation {

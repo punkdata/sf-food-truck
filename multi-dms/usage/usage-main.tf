@@ -3,7 +3,7 @@
 ############################################
 
 variable "prefix_name" {
-  description = "Lowercase, hyphenized prefix for naming DMS resources."
+  description = "Lowercase, hyphenized prefix used to name DMS resources."
   type        = string
 }
 
@@ -22,6 +22,16 @@ variable "tags" {
   type        = map(string)
 }
 
+variable "source_db_identifier" {
+  description = "RDS identifier for the source database."
+  type        = string
+}
+
+variable "target_db_identifier" {
+  description = "RDS identifier for the target database."
+  type        = string
+}
+
 ############################################
 # SECURITY GROUP FOR DMS INSTANCE
 ############################################
@@ -31,6 +41,7 @@ resource "aws_security_group" "dms" {
   description = "Security group for DMS replication instance"
   vpc_id      = var.vpc_id
 
+  # Allow all egress
   egress {
     from_port   = 0
     to_port     = 0
@@ -38,6 +49,7 @@ resource "aws_security_group" "dms" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Example: allow PostgreSQL ingress
   ingress {
     from_port   = 5432
     to_port     = 5432
@@ -51,42 +63,56 @@ resource "aws_security_group" "dms" {
 }
 
 ############################################
-# SECRETS FOR DMS ENDPOINTS
+# DATA SOURCES — RDS LOOKUPS
+############################################
+
+data "aws_db_instance" "source" {
+  db_instance_identifier = var.source_db_identifier
+}
+
+data "aws_db_instance" "target" {
+  db_instance_identifier = var.target_db_identifier
+}
+
+############################################
+# CREATE SECRETS FOR DMS ENDPOINTS
 ############################################
 
 resource "aws_secretsmanager_secret" "source_pg" {
-  name = "${var.prefix_name}-srcpg"
-  tags = var.tags
+  name       = "${var.prefix_name}-srcpg"
+  kms_key_id = module.dms.kms_key_arn
+  tags       = var.tags
 }
 
 resource "aws_secretsmanager_secret_version" "source_pg" {
   secret_id = aws_secretsmanager_secret.source_pg.id
-
   secret_string = jsonencode({
     username = "dms_user"
-    password = "testpassword123"
+    password = "CHANGEME-PASSWORD" # Replace securely
     engine   = "postgres"
-    host     = "source-db.example.local"
+    host     = data.aws_db_instance.source.address
     port     = 5432
-    dbname   = "sourcedb"
+    dbname   = data.aws_db_instance.source.db_name
+    sslmode  = "require"
   })
 }
 
 resource "aws_secretsmanager_secret" "target_pg" {
-  name = "${var.prefix_name}-tgtpg"
-  tags = var.tags
+  name       = "${var.prefix_name}-tgtpg"
+  kms_key_id = module.dms.kms_key_arn
+  tags       = var.tags
 }
 
 resource "aws_secretsmanager_secret_version" "target_pg" {
   secret_id = aws_secretsmanager_secret.target_pg.id
-
   secret_string = jsonencode({
     username = "dms_user"
-    password = "testpassword123"
+    password = "CHANGEME-PASSWORD" # Replace securely
     engine   = "postgres"
-    host     = "target-db.example.local"
+    host     = data.aws_db_instance.target.address
     port     = 5432
-    dbname   = "targetdb"
+    dbname   = data.aws_db_instance.target.db_name
+    sslmode  = "require"
   })
 }
 
@@ -95,7 +121,7 @@ resource "aws_secretsmanager_secret_version" "target_pg" {
 ############################################
 
 module "dms" {
-  source = "../modules/dms"
+  source = "../.." # Adjust to module path
 
   prefix_name            = var.prefix_name
   subnet_ids             = var.subnet_ids
@@ -114,15 +140,17 @@ module "dms" {
   log_retention_days = 14
 
   endpoints = {
-    sourcepg = {
+    source_pg = {
       endpoint_type       = "source"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
+      ssl_mode            = "require"
     }
-    targetpg = {
+    target_pg = {
       endpoint_type       = "target"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
+      ssl_mode            = "require"
     }
   }
 
@@ -137,10 +165,12 @@ output "dms_outputs" {
   description = "Key outputs from the DMS module"
   value = {
     kms_key_arn               = module.dms.kms_key_arn
+    kms_alias                 = module.dms.kms_alias
     s3_assessment_bucket      = module.dms.s3_assessment_bucket
     s3_assessment_logs_bucket = module.dms.s3_assessment_logs_bucket
     cloudwatch_log_group      = module.dms.cloudwatch_log_group
-    replication_instance_id   = module.dms.replication_instance_id
+    replication_instance      = module.dms.replication_instance_id
+    replication_instance_arn  = module.dms.replication_instance_arn
     execution_role_arn        = module.dms.execution_role_arn
     strict_roles              = module.dms.strict_roles
     endpoint_arns             = module.dms.endpoint_arns
