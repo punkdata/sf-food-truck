@@ -372,6 +372,21 @@ resource "aws_s3_bucket_logging" "assessment" {
   target_prefix = "log/"
 }
 
+resource "aws_s3_bucket_versioning" "assessment" {
+  bucket = aws_s3_bucket.assessment.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "assessment_logs" {
+  bucket = aws_s3_bucket.assessment_logs.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+
 ############################################
 # DMS REPLICATION
 ############################################
