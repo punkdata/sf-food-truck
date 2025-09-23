@@ -156,6 +156,16 @@ data "aws_iam_policy_document" "secrets" {
       identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
     }
   }
+  statement {
+    sid       = "DenyPublicAccess"
+    effect    = "Deny"
+    actions   = ["secretsmanager:*"]
+    resources = [each.value]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+  }
 }
 
 resource "aws_secretsmanager_secret_policy" "secrets" {
