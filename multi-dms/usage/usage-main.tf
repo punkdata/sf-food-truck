@@ -138,7 +138,7 @@ data "aws_iam_policy_document" "secrets" {
     principals {
       type = "AWS"
       identifiers = [
-        aws_iam_role.strict["dms-secrets-mgr-role"].arn
+        module.dms.strict_roles["dms-secrets-mgr-role"]
       ]
     }
   }
