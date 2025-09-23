@@ -131,39 +131,15 @@ data "aws_iam_policy_document" "secrets" {
   for_each = local.dms_secrets
 
   statement {
-    sid       = "DenyInsecureTransport"
-    effect    = "Deny"
-    actions   = ["secretsmanager:*"]
-    resources = [each.value]
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-
-  statement {
-    sid       = "AllowAccountAccess"
+    sid       = "AllowDMSRoleRead"
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [each.value]
     principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
-    }
-  }
-  statement {
-    sid       = "DenyPublicAccess"
-    effect    = "Deny"
-    actions   = ["secretsmanager:*"]
-    resources = [each.value]
-    principals {
-      type        = "*"
-      identifiers = ["*"]
+      type = "AWS"
+      identifiers = [
+        aws_iam_role.strict["dms-secrets-mgr-role"].arn
+      ]
     }
   }
 }
