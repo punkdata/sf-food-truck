@@ -117,7 +117,7 @@ resource "aws_secretsmanager_secret_version" "target_pg" {
 }
 
 ############################################
-# SECRET POLICIES (OPA SECRETS-MANAGER-4)
+# SECRET POLICIES (OPA SECRETS-MANAGER-4 & 5)
 ############################################
 
 locals {
@@ -131,9 +131,9 @@ data "aws_iam_policy_document" "secrets" {
   for_each = local.dms_secrets
 
   statement {
-    sid     = "DenyInsecureTransport"
-    effect  = "Deny"
-    actions = ["secretsmanager:*"]
+    sid       = "DenyInsecureTransport"
+    effect    = "Deny"
+    actions   = ["secretsmanager:*"]
     resources = [each.value]
     principals {
       type        = "*"
@@ -147,9 +147,9 @@ data "aws_iam_policy_document" "secrets" {
   }
 
   statement {
-    sid     = "AllowAccountAccess"
-    effect  = "Allow"
-    actions = ["secretsmanager:GetSecretValue"]
+    sid       = "AllowAccountAccess"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = [each.value]
     principals {
       type        = "AWS"
@@ -159,11 +159,11 @@ data "aws_iam_policy_document" "secrets" {
 }
 
 resource "aws_secretsmanager_secret_policy" "secrets" {
-  for_each   = local.dms_secrets
-  secret_arn = each.value
-  policy     = data.aws_iam_policy_document.secrets[each.key].json
+  for_each            = local.dms_secrets
+  secret_arn          = each.value
+  policy              = data.aws_iam_policy_document.secrets[each.key].json
+  block_public_policy = true
 }
-
 
 ############################################
 # MODULE USAGE

@@ -134,7 +134,7 @@ data "aws_iam_policy_document" "dms_assume_role" {
 }
 
 ############################################
-# IAM — STRICT ROLES
+# IAM — STRICT ROLES (OPA-COMPLIANT)
 ############################################
 
 resource "aws_iam_role" "strict" {
@@ -145,58 +145,81 @@ resource "aws_iam_role" "strict" {
   tags               = var.tags
 }
 
-resource "aws_iam_role_policy" "dms_vpc_role" {
+# dms-vpc-role
+data "aws_iam_policy_document" "dms_vpc_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:Describe*",
+      "ec2:CreateNetworkInterface",
+      "ec2:DeleteNetworkInterface",
+      "ec2:ModifyNetworkInterfaceAttribute"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "dms_vpc_role" {
   count  = contains(var.create_dms_roles, "dms-vpc-role") ? 1 : 0
   name   = "${var.prefix_name}-dms-vpc-role-policy"
-  role   = aws_iam_role.strict["dms-vpc-role"].id
-  policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = [
-        "ec2:Describe*",
-        "ec2:CreateNetworkInterface",
-        "ec2:DeleteNetworkInterface",
-        "ec2:ModifyNetworkInterfaceAttribute"
-      ]
-      Resource = "*"
-    }]
-  })
+  policy = data.aws_iam_policy_document.dms_vpc_role.json
 }
 
-resource "aws_iam_role_policy" "dms_cloudwatch_logs_role" {
+resource "aws_iam_role_policy_attachment" "dms_vpc_role" {
+  count      = contains(var.create_dms_roles, "dms-vpc-role") ? 1 : 0
+  role       = aws_iam_role.strict["dms-vpc-role"].name
+  policy_arn = aws_iam_policy.dms_vpc_role[0].arn
+}
+
+# dms-cloudwatch-logs-role
+data "aws_iam_policy_document" "dms_cloudwatch_logs_role" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+    resources = [
+      "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/dms/${local.name_prefix}:*"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "dms_cloudwatch_logs_role" {
   count  = contains(var.create_dms_roles, "dms-cloudwatch-logs-role") ? 1 : 0
   name   = "${var.prefix_name}-dms-cloudwatch-logs-role-policy"
-  role   = aws_iam_role.strict["dms-cloudwatch-logs-role"].id
-  policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ]
-      Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/dms/${local.name_prefix}:*"
-    }]
-  })
+  policy = data.aws_iam_policy_document.dms_cloudwatch_logs_role.json
 }
 
-resource "aws_iam_role_policy" "dms_secrets_mgr_role" {
+resource "aws_iam_role_policy_attachment" "dms_cloudwatch_logs_role" {
+  count      = contains(var.create_dms_roles, "dms-cloudwatch-logs-role") ? 1 : 0
+  role       = aws_iam_role.strict["dms-cloudwatch-logs-role"].name
+  policy_arn = aws_iam_policy.dms_cloudwatch_logs_role[0].arn
+}
+
+# dms-secrets-mgr-role
+data "aws_iam_policy_document" "dms_secrets_mgr_role" {
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "dms_secrets_mgr_role" {
   count  = contains(var.create_dms_roles, "dms-secrets-mgr-role") ? 1 : 0
   name   = "${var.prefix_name}-dms-secrets-mgr-role-policy"
-  role   = aws_iam_role.strict["dms-secrets-mgr-role"].id
-  policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = "*"
-    }]
-  })
+  policy = data.aws_iam_policy_document.dms_secrets_mgr_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "dms_secrets_mgr_role" {
+  count      = contains(var.create_dms_roles, "dms-secrets-mgr-role") ? 1 : 0
+  role       = aws_iam_role.strict["dms-secrets-mgr-role"].name
+  policy_arn = aws_iam_policy.dms_secrets_mgr_role[0].arn
 }
 
 ############################################
-# IAM — EXECUTION ROLE
+# IAM — EXECUTION ROLE (CLEANED)
 ############################################
 
 resource "aws_iam_role" "dms_execution_role" {
@@ -206,62 +229,64 @@ resource "aws_iam_role" "dms_execution_role" {
   tags               = var.tags
 }
 
-resource "aws_iam_role_policy" "dms_execution_role" {
-  name   = "${var.prefix_name}-dms-execution-role-policy"
-  role   = aws_iam_role.dms_execution_role.id
-  policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = [
-          "ec2:Describe*",
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
-          "ec2:ModifyNetworkInterfaceAttribute"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/dms/${local.name_prefix}:*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = [
-          "s3:PutObject",
-          "s3:GetObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          aws_s3_bucket.assessment.arn,
-          "${aws_s3_bucket.assessment.arn}/*",
-          aws_s3_bucket.assessment_logs.arn,
-          "${aws_s3_bucket.assessment_logs.arn}/*"
-        ]
-      },
-      {
-        Effect   = "Allow"
-        Action   = [
-          "kms:Encrypt",
-          "kms:Decrypt",
-          "kms:ReEncrypt*",
-          "kms:GenerateDataKey*",
-          "kms:DescribeKey"
-        ]
-        Resource = var.kms_key_arn
-      }
+data "aws_iam_policy_document" "dms_execution" {
+  # Logs
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
     ]
-  })
+    resources = [
+      "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/dms/${local.name_prefix}:*"
+    ]
+  }
+
+  # Secrets
+  statement {
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["*"]
+  }
+
+  # S3
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:ListBucket"
+    ]
+    resources = [
+      aws_s3_bucket.assessment.arn,
+      "${aws_s3_bucket.assessment.arn}/*",
+      aws_s3_bucket.assessment_logs.arn,
+      "${aws_s3_bucket.assessment_logs.arn}/*"
+    ]
+  }
+
+  # KMS
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    resources = [var.kms_key_arn]
+  }
+}
+
+resource "aws_iam_policy" "dms_execution" {
+  name   = "${var.prefix_name}-dms-execution-role-policy"
+  policy = data.aws_iam_policy_document.dms_execution.json
+}
+
+resource "aws_iam_role_policy_attachment" "dms_execution" {
+  role       = aws_iam_role.dms_execution_role.name
+  policy_arn = aws_iam_policy.dms_execution.arn
 }
 
 ############################################
@@ -279,7 +304,6 @@ resource "aws_cloudwatch_log_group" "dms" {
 # S3 BUCKETS
 ############################################
 
-# Main assessment bucket
 resource "aws_s3_bucket" "assessment" {
   bucket        = "${var.prefix_name}-dms-assessments"
   force_destroy = false
@@ -322,7 +346,6 @@ resource "aws_s3_bucket_policy" "assessment" {
   policy = data.aws_iam_policy_document.assessment_policy.json
 }
 
-# Logging bucket
 resource "aws_s3_bucket" "assessment_logs" {
   bucket        = "${var.prefix_name}-dms-assessments-logs"
   force_destroy = false
@@ -365,13 +388,21 @@ resource "aws_s3_bucket_policy" "assessment_logs" {
   policy = data.aws_iam_policy_document.assessment_logs_policy.json
 }
 
-# Enable logging on assessment bucket
+# Logging on assessment bucket
 resource "aws_s3_bucket_logging" "assessment" {
   bucket        = aws_s3_bucket.assessment.id
   target_bucket = aws_s3_bucket.assessment_logs.id
   target_prefix = "log/"
 }
 
+# Logging on logs bucket (self-logging, OPA compliant)
+resource "aws_s3_bucket_logging" "assessment_logs" {
+  bucket        = aws_s3_bucket.assessment_logs.id
+  target_bucket = aws_s3_bucket.assessment_logs.id
+  target_prefix = "log/"
+}
+
+# Versioning
 resource "aws_s3_bucket_versioning" "assessment" {
   bucket = aws_s3_bucket.assessment.id
   versioning_configuration {
@@ -385,7 +416,6 @@ resource "aws_s3_bucket_versioning" "assessment_logs" {
     status = "Enabled"
   }
 }
-
 
 ############################################
 # DMS REPLICATION
