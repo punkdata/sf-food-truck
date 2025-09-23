@@ -95,6 +95,7 @@ Each value must include:
 - endpoint_type       = "source" or "target"
 - engine_name         = e.g., "postgres"
 - secrets_manager_arn = ARN of a Secrets Manager secret containing DB creds
+- database_name       = name of the database
 Optional:
 - ssl_mode            = "require" (default), or stronger ("verify-ca", "verify-full")
 EOT
@@ -102,6 +103,7 @@ EOT
     endpoint_type       = string
     engine_name         = string
     secrets_manager_arn = string
+    database_name       = string
     ssl_mode            = optional(string, "require")
   }))
   default  = {}
@@ -457,6 +459,7 @@ resource "aws_dms_endpoint" "this" {
   secrets_manager_access_role_arn = aws_iam_role.strict["dms-secrets-mgr-role"].arn
   kms_key_arn                     = var.kms_key_arn
   ssl_mode                        = each.value.ssl_mode
+  database_name                   = each.value.database_name
   tags                            = var.tags
 }
 
@@ -502,6 +505,11 @@ output "execution_role_arn" {
 
 output "strict_roles" {
   value = { for k, r in aws_iam_role.strict : k => r.arn }
+}
+
+output "secrets_policies" {
+  description = "Map of attached Secrets Manager secret policies by key"
+  value       = {}
 }
 
 output "endpoint_arns" {

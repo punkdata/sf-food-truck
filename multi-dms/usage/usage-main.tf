@@ -66,7 +66,12 @@ resource "aws_kms_key" "dms" {
   description             = "Customer managed KMS key for DMS and secrets"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.kms_dms.json
   tags                    = var.tags
+
+  depends_on = [
+    module.dms
+  ]
 }
 
 resource "aws_kms_alias" "dms" {
@@ -117,38 +122,51 @@ resource "aws_secretsmanager_secret_version" "target_pg" {
 }
 
 ############################################
-# SECRET POLICIES (OPA SECRETS-MANAGER-4 & 5)
+# SECRET POLICIES (OPA COMPLIANT)
 ############################################
 
-locals {
-  dms_secrets = {
-    source_pg = aws_secretsmanager_secret.source_pg.arn
-    target_pg = aws_secretsmanager_secret.target_pg.arn
-  }
-}
-
-data "aws_iam_policy_document" "secrets" {
-  for_each = local.dms_secrets
-
-  statement {
-    sid       = "AllowDMSRoleRead"
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [each.value]
-    principals {
-      type = "AWS"
-      identifiers = [
-        module.dms.strict_roles["dms-secrets-mgr-role"]
-      ]
-    }
-  }
-}
-
-resource "aws_secretsmanager_secret_policy" "secrets" {
-  for_each            = local.dms_secrets
-  secret_arn          = each.value
-  policy              = data.aws_iam_policy_document.secrets[each.key].json
+resource "aws_secretsmanager_secret_policy" "source_pg" {
+  secret_arn          = aws_secretsmanager_secret.source_pg.arn
   block_public_policy = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowDMSRoleRead"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.source_pg.arn
+        Principal = {
+          AWS = module.dms.strict_roles["dms-secrets-mgr-role"]
+        }
+      }
+    ]
+  })
+
+  depends_on = [module.dms]
+}
+
+resource "aws_secretsmanager_secret_policy" "target_pg" {
+  secret_arn          = aws_secretsmanager_secret.target_pg.arn
+  block_public_policy = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AllowDMSRoleRead"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.target_pg.arn
+        Principal = {
+          AWS = module.dms.strict_roles["dms-secrets-mgr-role"]
+        }
+      }
+    ]
+  })
+
+  depends_on = [module.dms]
 }
 
 ############################################
@@ -203,5 +221,9 @@ output "dms_outputs" {
     execution_role_arn            = module.dms.execution_role_arn
     strict_roles                  = module.dms.strict_roles
     endpoint_arns                 = module.dms.endpoint_arns
+    secrets_policies = {
+      source_pg = aws_secretsmanager_secret_policy.source_pg.id
+      target_pg = aws_secretsmanager_secret_policy.target_pg.id
+    }
   }
 }
