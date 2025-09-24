@@ -235,10 +235,10 @@ module "dms" {
 
   replication_tasks = {
     full_load_task = {
-      source_endpoint      = "sourcepg"   # must match the endpoints map keys
-      target_endpoint      = "targetpg"
-      migration_type       = "full-load"  # options: "full-load", "cdc", "full-load-and-cdc"
-      table_mappings       = jsonencode({
+      source_endpoint = "sourcepg" # must match the endpoints map keys
+      target_endpoint = "targetpg"
+      migration_type  = "full-load" # options: "full-load", "cdc", "full-load-and-cdc"
+      table_mappings = jsonencode({
         rules = [
           {
             rule-type = "selection"
@@ -286,6 +286,7 @@ output "dms_outputs" {
     execution_role_arn            = module.dms.execution_role_arn
     strict_roles                  = module.dms.strict_roles
     endpoint_arns                 = module.dms.endpoint_arns
+    replication_tasks             = module.dms.replication_tasks
     secrets_policies = {
       source_pg = aws_secretsmanager_secret_policy.source_pg.id
       target_pg = aws_secretsmanager_secret_policy.target_pg.id

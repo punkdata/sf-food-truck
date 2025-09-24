@@ -560,6 +560,12 @@ output "endpoint_arns" {
 }
 
 output "replication_tasks" {
-  value = { for k, t in aws_dms_replication_task.this : k => t.replication_task_arn }
+  description = "Map of replication task details by key"
+  value = {
+    for k, t in aws_dms_replication_task.this :
+    k => {
+      id  = t.replication_task_id
+      arn = t.replication_task_arn
+    }
+  }
 }
-
