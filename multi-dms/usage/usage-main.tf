@@ -234,7 +234,7 @@ module "dms" {
   }
 
   replication_tasks = {
-    full_load_task = {
+    full-load-task = {
       source_endpoint = "sourcepg" # must match the endpoints map keys
       target_endpoint = "targetpg"
       migration_type  = "full-load" # options: "full-load", "cdc", "full-load-and-cdc"

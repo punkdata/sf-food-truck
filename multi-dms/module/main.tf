@@ -18,16 +18,19 @@ variable "prefix_name" {
   type        = string
   nullable    = false
 
+  # Naming rules
   validation {
     condition     = can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", var.prefix_name))
-    error_message = "prefix_name must be lowercase letters, digits, and hyphens only, start/end with alphanumeric."
+    error_message = "prefix_name must contain only lowercase letters, digits, and hyphens, and must start/end with an alphanumeric character."
   }
 
+  # No consecutive hyphens
   validation {
     condition     = !can(regex("--", var.prefix_name))
     error_message = "prefix_name cannot contain consecutive hyphens ('--')."
   }
 
+  # Length check
   validation {
     condition     = length(var.prefix_name) <= 50
     error_message = "prefix_name must be 50 characters or fewer."
@@ -119,18 +122,45 @@ EOT
   }))
   default  = {}
   nullable = false
+
+  # Validate endpoint keys (naming rules)
+  validation {
+    condition = alltrue([
+      for k in keys(var.endpoints) :
+      can(regex("^[a-z][a-z0-9-]*[a-z0-9]$", k))
+    ])
+    error_message = "Endpoint keys must start with a lowercase letter, contain only lowercase letters, digits, and hyphens, and must not end with a hyphen."
+  }
+
+  # Validate endpoint keys (length ≤ 255 with prefix)
+  validation {
+    condition = alltrue([
+      for k in keys(var.endpoints) :
+      length("${var.prefix_name}-${k}") <= 255
+    ])
+    error_message = "Endpoint ID (prefix_name + endpoint key) must not exceed 255 characters."
+  }
+
+  # Validate endpoint_type values
+  validation {
+    condition = alltrue([
+      for e in values(var.endpoints) :
+      contains(["source", "target"], e.endpoint_type)
+    ])
+    error_message = "endpoints[*].endpoint_type must be either 'source' or 'target'."
+  }
 }
 
 variable "replication_tasks" {
   description = <<EOT
 Map of DMS replication tasks.
 Each value must include:
-- source_endpoint      = key of the source endpoint in `var.endpoints`
-- target_endpoint      = key of the target endpoint in `var.endpoints`
-- migration_type       = "full-load" | "cdc" | "full-load-and-cdc"
-- table_mappings       = JSON string with table mappings
+- source_endpoint (must match a key in endpoints)
+- target_endpoint (must match a key in endpoints)
+- migration_type  (full-load, cdc, full-load-and-cdc)
+- table_mappings  (JSON string)
 Optional:
-- replication_settings = JSON string with task settings
+- replication_settings (JSON string)
 EOT
   type = map(object({
     source_endpoint      = string
@@ -142,12 +172,41 @@ EOT
   default  = {}
   nullable = false
 
+  # Validate replication task keys (naming rules)
   validation {
     condition = alltrue([
       for k in keys(var.replication_tasks) :
-      can(regex("^[a-zA-Z][a-zA-Z0-9-]{0,254}$", "${var.prefix_name}-${k}"))
+      can(regex("^[a-z][a-z0-9-]*$", k))
     ])
-    error_message = "Each replication task key must result in a replication_task_id that starts with a letter, contains only letters, numbers, or hyphens, and be max 255 characters."
+    error_message = "Replication task keys must start with a lowercase letter and contain only lowercase letters, digits, and hyphens (no underscores)."
+  }
+
+  # Validate replication task keys (length ≤ 255 with prefix)
+  validation {
+    condition = alltrue([
+      for k in keys(var.replication_tasks) :
+      length("${var.prefix_name}-${k}") <= 255
+    ])
+    error_message = "Replication task ID (prefix_name + task key) must not exceed 255 characters."
+  }
+
+  # Validate migration_type values
+  validation {
+    condition = alltrue([
+      for t in values(var.replication_tasks) :
+      contains(["full-load", "cdc", "full-load-and-cdc"], t.migration_type)
+    ])
+    error_message = "replication_tasks[*].migration_type must be one of: full-load, cdc, or full-load-and-cdc."
+  }
+
+  # Validate endpoint references exist
+  validation {
+    condition = alltrue([
+      for t in values(var.replication_tasks) :
+      contains(keys(var.endpoints), t.source_endpoint) &&
+      contains(keys(var.endpoints), t.target_endpoint)
+    ])
+    error_message = "Each replication task must reference valid source_endpoint and target_endpoint keys defined in var.endpoints."
   }
 }
 
