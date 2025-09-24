@@ -235,24 +235,25 @@ module "dms" {
 
   replication_tasks = {
     full-load-task = {
-      source_endpoint = "sourcepg" # must match the endpoints map keys
+      source_endpoint = "sourcepg"
       target_endpoint = "targetpg"
-      migration_type  = "full-load" # options: "full-load", "cdc", "full-load-and-cdc"
+      migration_type  = "full-load"
+
       table_mappings = jsonencode({
         rules = [
           {
-            rule-type = "selection"
-            rule-id   = "1"
-            rule-name = "includeAll"
-            object-locator = {
-              schema-name = "%"
-              table-name  = "%"
+            "rule-type" = "selection"
+            "rule-id"   = "1"
+            "rule-name" = "includeAll"
+            "object-locator" = {
+              "schema-name" = "%"
+              "table-name"  = "%"
             }
-            rule-action = "include"
+            "rule-action" = "include"
           }
         ]
       })
-      # Optional: override replication settings
+
       replication_settings = jsonencode({
         TargetMetadata = {
           TargetSchema = ""
@@ -262,6 +263,49 @@ module "dms" {
           TargetTablePrepMode = "DROP_AND_CREATE"
         }
       })
+    }
+
+    cdc-task = {
+      source_endpoint = "sourcepg"
+      target_endpoint = "targetpg"
+      migration_type  = "cdc"
+
+      table_mappings = jsonencode({
+        rules = [
+          {
+            "rule-type" = "selection"
+            "rule-id"   = "2"
+            "rule-name" = "cdcAll"
+            "object-locator" = {
+              "schema-name" = "%"
+              "table-name"  = "%"
+            }
+            "rule-action" = "include"
+          }
+        ]
+      })
+
+      replication_settings = jsonencode({
+        Logging = {
+          EnableLogging = true
+        }
+        ChangeProcessingDdlHandlingPolicy = {
+          HandleSourceTableDropped   = true
+          HandleSourceTableTruncated = true
+          HandleSourceTableAltered   = true
+        }
+      })
+    }
+  }
+
+  premigration_assessments = {
+    full-load-assessment = {
+      replication_task = "full-load-task"
+      assessment_types = ["all"]
+    }
+    cdc-assessment = {
+      replication_task = "cdc-task"
+      assessment_types = ["compatibility"]
     }
   }
 

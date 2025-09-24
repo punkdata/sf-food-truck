@@ -210,6 +210,59 @@ EOT
   }
 }
 
+variable "premigration_assessments" {
+  description = <<EOT
+Map of premigration assessment tasks.
+Each value must include:
+- replication_task = key of an existing replication task
+- assessment_types = list of assessment types ("all" or subset like ["compatibility", "performance"])
+EOT
+  type = map(object({
+    replication_task = string
+    assessment_types = list(string)
+  }))
+  default  = {}
+  nullable = false
+
+  # Validate assessment keys (naming rules)
+  validation {
+    condition = alltrue([
+      for k in keys(var.premigration_assessments) :
+      can(regex("^[a-z][a-z0-9-]*$", k))
+    ])
+    error_message = "Premigration assessment keys must start with a lowercase letter and contain only lowercase letters, digits, and hyphens (no underscores)."
+  }
+
+  # Validate assessment keys (length ≤ 255 with prefix)
+  validation {
+    condition = alltrue([
+      for k in keys(var.premigration_assessments) :
+      length("${var.prefix_name}-${k}") <= 255
+    ])
+    error_message = "Premigration assessment ID (prefix_name + key) must not exceed 255 characters."
+  }
+
+  # Validate replication_task references exist
+  validation {
+    condition = alltrue([
+      for a in values(var.premigration_assessments) :
+      contains(keys(var.replication_tasks), a.replication_task)
+    ])
+    error_message = "Each premigration assessment must reference a valid replication_task key defined in var.replication_tasks."
+  }
+
+  # Validate assessment_types values
+  validation {
+    condition = alltrue(flatten([
+      for a in values(var.premigration_assessments) : [
+        for t in a.assessment_types : (t == "all" || contains(["compatibility", "performance"], t))
+      ]
+    ]))
+    error_message = "assessment_types must be 'all' or one of: compatibility, performance."
+  }
+}
+
+
 ############################################
 # IAM — ASSUME ROLE POLICY
 ############################################
@@ -574,6 +627,26 @@ resource "aws_dms_replication_task" "this" {
 }
 
 ############################################
+# DMS PREMIGRATION ASSESSMENT TASKS
+############################################
+
+resource "aws_dms_replication_task_assessment_run" "this" {
+  for_each = var.premigration_assessments
+
+  replication_task_arn = aws_dms_replication_task.this[each.value.replication_task].replication_task_arn
+  service_access_role  = aws_iam_role.dms_execution_role.arn
+  assessment_run_name  = "${var.prefix_name}-${each.key}"
+  result_location_s3   = aws_s3_bucket.assessment.bucket
+
+  assessment_run_settings = jsonencode({
+    AssessmentTypes = each.value.assessment_types
+  })
+
+  tags = var.tags
+}
+
+
+############################################
 # OUTPUTS
 ############################################
 
@@ -633,6 +706,17 @@ output "replication_tasks" {
     k => {
       id  = t.replication_task_id
       arn = t.replication_task_arn
+    }
+  }
+}
+
+output "premigration_assessments" {
+  description = "Map of premigration assessments by key"
+  value = {
+    for k, a in aws_dms_replication_task_assessment_run.this :
+    k => {
+      id  = a.id
+      arn = a.replication_task_assessment_run_arn
     }
   }
 }
