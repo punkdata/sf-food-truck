@@ -298,17 +298,6 @@ module "dms" {
     }
   }
 
-  premigration_assessments = {
-    full-load-assessment = {
-      replication_task = "full-load-task"
-      assessment_types = ["all"]
-    }
-    cdc-assessment = {
-      replication_task = "cdc-task"
-      assessment_types = ["compatibility"]
-    }
-  }
-
   tags = var.tags
 }
 
