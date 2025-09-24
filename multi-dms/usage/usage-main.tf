@@ -3,6 +3,7 @@
 ############################################
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 ############################################
 # VARIABLES
@@ -229,6 +230,38 @@ module "dms" {
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
       ssl_mode            = "require"
+    }
+  }
+
+  replication_tasks = {
+    full_load_task = {
+      source_endpoint      = "sourcepg"   # must match the endpoints map keys
+      target_endpoint      = "targetpg"
+      migration_type       = "full-load"  # options: "full-load", "cdc", "full-load-and-cdc"
+      table_mappings       = jsonencode({
+        rules = [
+          {
+            rule-type = "selection"
+            rule-id   = "1"
+            rule-name = "includeAll"
+            object-locator = {
+              schema-name = "%"
+              table-name  = "%"
+            }
+            rule-action = "include"
+          }
+        ]
+      })
+      # Optional: override replication settings
+      replication_settings = jsonencode({
+        TargetMetadata = {
+          TargetSchema = ""
+          SupportLobs  = true
+        }
+        FullLoadSettings = {
+          TargetTablePrepMode = "DROP_AND_CREATE"
+        }
+      })
     }
   }
 

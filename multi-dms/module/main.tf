@@ -6,8 +6,8 @@ locals {
   name_prefix = var.prefix_name
 }
 
-data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 ############################################
 # VARIABLES
@@ -116,6 +116,28 @@ EOT
     secrets_manager_arn = string
     database_name       = string
     ssl_mode            = optional(string, "require")
+  }))
+  default  = {}
+  nullable = false
+}
+
+variable "replication_tasks" {
+  description = <<EOT
+Map of DMS replication tasks.
+Each value must include:
+- source_endpoint       = key of source endpoint in var.endpoints
+- target_endpoint       = key of target endpoint in var.endpoints
+- migration_type        = "full-load", "cdc", or "full-load-and-cdc"
+- table_mappings        = JSON string of table mappings
+Optional:
+- replication_settings  = JSON string of task settings
+EOT
+  type = map(object({
+    source_endpoint      = string
+    target_endpoint      = string
+    migration_type       = string
+    table_mappings       = string
+    replication_settings = optional(string)
   }))
   default  = {}
   nullable = false
@@ -467,6 +489,24 @@ resource "aws_dms_endpoint" "this" {
 }
 
 ############################################
+# DMS REPLICATION TASKS
+############################################
+
+resource "aws_dms_replication_task" "this" {
+  for_each = var.replication_tasks
+
+  replication_task_id       = "${var.prefix_name}-${each.key}"
+  migration_type            = each.value.migration_type
+  replication_instance_arn  = aws_dms_replication_instance.this.replication_instance_arn
+  source_endpoint_arn       = aws_dms_endpoint.this[each.value.source_endpoint].endpoint_arn
+  target_endpoint_arn       = aws_dms_endpoint.this[each.value.target_endpoint].endpoint_arn
+  table_mappings            = each.value.table_mappings
+  replication_task_settings = lookup(each.value, "replication_settings", null)
+
+  tags = var.tags
+}
+
+############################################
 # OUTPUTS
 ############################################
 
@@ -518,3 +558,8 @@ output "secrets_policies" {
 output "endpoint_arns" {
   value = { for k, e in aws_dms_endpoint.this : k => e.endpoint_arn }
 }
+
+output "replication_tasks" {
+  value = { for k, t in aws_dms_replication_task.this : k => t.replication_task_arn }
+}
+
