@@ -59,8 +59,40 @@ resource "aws_security_group" "dms" {
 }
 
 ############################################
-# KMS KEY (OPA COMPLIANT)
+# KMS POLICY DOCUMENT
 ############################################
+
+data "aws_region" "current" {}
+
+data "aws_iam_policy_document" "kms_dms" {
+  statement {
+    sid    = "EnableRootAccountAccess"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowCloudWatchLogsUseKey"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${data.aws_region.current.id}.amazonaws.com"]
+    }
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:DescribeKey"
+    ]
+    resources = ["*"]
+  }
+}
 
 resource "aws_kms_key" "dms" {
   description             = "Customer managed KMS key for DMS and secrets"

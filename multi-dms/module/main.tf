@@ -1,4 +1,15 @@
 ############################################
+# LOCALS & DATA
+############################################
+
+locals {
+  name_prefix = var.prefix_name
+}
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+############################################
 # VARIABLES
 ############################################
 
@@ -111,17 +122,6 @@ EOT
 }
 
 ############################################
-# LOCALS & DATA
-############################################
-
-locals {
-  name_prefix = var.prefix_name
-}
-
-data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
-
-############################################
 # IAM — ASSUME ROLE POLICY
 ############################################
 
@@ -129,8 +129,11 @@ data "aws_iam_policy_document" "dms_assume_role" {
   statement {
     actions = ["sts:AssumeRole"]
     principals {
-      type        = "Service"
-      identifiers = ["dms.amazonaws.com"]
+      type = "Service"
+      identifiers = [
+        "dms.amazonaws.com",
+        "dms.${data.aws_region.current.id}.amazonaws.com"
+      ]
     }
   }
 }
