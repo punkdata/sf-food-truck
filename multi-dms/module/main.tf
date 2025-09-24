@@ -125,12 +125,12 @@ variable "replication_tasks" {
   description = <<EOT
 Map of DMS replication tasks.
 Each value must include:
-- source_endpoint       = key of source endpoint in var.endpoints
-- target_endpoint       = key of target endpoint in var.endpoints
-- migration_type        = "full-load", "cdc", or "full-load-and-cdc"
-- table_mappings        = JSON string of table mappings
+- source_endpoint      = key of the source endpoint in `var.endpoints`
+- target_endpoint      = key of the target endpoint in `var.endpoints`
+- migration_type       = "full-load" | "cdc" | "full-load-and-cdc"
+- table_mappings       = JSON string with table mappings
 Optional:
-- replication_settings  = JSON string of task settings
+- replication_settings = JSON string with task settings
 EOT
   type = map(object({
     source_endpoint      = string
@@ -141,6 +141,14 @@ EOT
   }))
   default  = {}
   nullable = false
+
+  validation {
+    condition = alltrue([
+      for k in keys(var.replication_tasks) :
+      can(regex("^[a-zA-Z][a-zA-Z0-9-]{0,254}$", "${var.prefix_name}-${k}"))
+    ])
+    error_message = "Each replication task key must result in a replication_task_id that starts with a letter, contains only letters, numbers, or hyphens, and be max 255 characters."
+  }
 }
 
 ############################################
