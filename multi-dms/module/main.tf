@@ -298,6 +298,14 @@ data "aws_iam_policy_document" "dms_secrets_mgr_role" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = ["*"]
   }
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey"
+    ]
+    resources = [var.kms_key_arn]
+  }
 }
 
 resource "aws_iam_policy" "dms_secrets_mgr_role" {

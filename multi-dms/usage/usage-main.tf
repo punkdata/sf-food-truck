@@ -93,6 +93,19 @@ data "aws_iam_policy_document" "kms_dms" {
     ]
     resources = ["*"]
   }
+  statement {
+    sid    = "AllowDMSSecretsMgrRoleUseKey"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [module.dms.strict_roles["dms-secrets-mgr-role"]]
+    }
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey"
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_kms_key" "dms" {
@@ -101,10 +114,6 @@ resource "aws_kms_key" "dms" {
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.kms_dms.json
   tags                    = var.tags
-
-  depends_on = [
-    module.dms
-  ]
 }
 
 resource "aws_kms_alias" "dms" {

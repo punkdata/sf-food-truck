@@ -384,3 +384,64 @@ This module enforces AWS and OPA compliance rules. A few details to keep in mind
 - **tfvars Usage**  
   - Always define `prefix_name`, `subnet_ids`, `kms_key_arn`, and `tags` in a `terraform.tfvars`.  
   - This prevents Terraform from hanging on missing required inputs.
+
+
+# Milestones of Refactor
+
+# ✅ Major DMS Module Refactor Milestones
+
+## 1. Subnet Group Handling (2025-09-17)
+- Removed `replication_subnet_group_name` variable.  
+- Replaced with `subnet_ids` (list) and forced the module to always create a `replication_subnet_group`.  
+- Updated **usage examples** and **README** to reflect the new required input.
+
+---
+
+## 2. KMS, IAM, and Service Principals Cleanup (2025-09-17 → 09-19)
+- Introduced **`format()`-based locals** for AWS service principals (`logs`, `s3`, `dms`) to fix parsing errors.  
+- Consolidated IAM policies into **consistent `aws_iam_policy_document` blocks**.  
+- Updated KMS key policy to reference locals, preventing "missing resource identity" errors.  
+- Result: a fully expanded `main.tf` baseline with OPA-compliant S3, CloudWatch, IAM, and KMS.
+
+---
+
+## 3. Replication Tasks & JSON Mappings (2025-09-18 → 09-19)
+- Allowed **multiple replication tasks** via `replication_tasks` map.  
+- Supported **inline JSON** or **file-based JSON** for table mappings, task settings, connection attributes.  
+- Added **validation** for:
+  - `migration_type` (`full-load`, `cdc`, `full-load-and-cdc`)  
+  - `table_mappings` must not be null  
+- Paused discussion on whether to provide **defaults** vs **require JSON files**.
+
+---
+
+## 4. Premigration Assessment Support (2025-09-18 → 09-19)
+- Added `premigration_assessments` map.  
+- Each assessment task is created as a separate resource.  
+- Assessment settings can be passed inline JSON or file reference.
+
+---
+
+## 5. Secrets Manager & KMS Policy Fixes (2025-09-23 → 09-24)
+- Fixed **KMS key policy** to allow Secrets Manager retrieval.  
+- Added **IAM policy_document + attachment** for Secrets Manager (OPA compliance).  
+- Validated that secrets resolution requires both KMS permissions and proper role trust.
+
+---
+
+## 6. Remove DMS Role Creation (2025-09-24 → 09-25)
+- Decided **not to create** the following inside the module:
+  - `dms-vpc-role` (AWS required, global)  
+  - `dms-cloudwatch-logs-role` (AWS required, global)  
+  - `dms-secrets-mgr-role` (custom, but can cause duplicates if module deployed multiple times)  
+- Instead:  
+  - Added variables `dms_vpc_role_arn`, `dms_cloudwatch_logs_role_arn`, `dms_secrets_mgr_role_arn`.  
+  - Updated references in endpoints and replication instance to consume ARNs.  
+  - Outputs now surface passed-in role ARNs.
+
+---
+
+# 📌 Current Status
+- The module is **OPA-compliant**, **multi-task capable**, and **multi-endpoint capable**.  
+- All IAM roles are now **externalized** to avoid duplication.  
+- Usage examples, tfvars, and README need to be aligned to reflect these changes (passing in role ARNs instead of creating roles).
