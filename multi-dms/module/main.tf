@@ -72,6 +72,19 @@ variable "dms_secrets_mgr_role_arn" {
   type        = string
 }
 
+variable "dms_vpc_role_arn" {
+  description = "ARN of the AWS DMS VPC role (must be created outside this module)."
+  type        = string
+  default     = null
+}
+
+variable "dms_cloudwatch_logs_role_arn" {
+  description = "ARN of the AWS DMS CloudWatch Logs role (must be created outside this module)."
+  type        = string
+  default     = null
+}
+
+
 variable "log_retention_days" {
   description = "Retention in days for CloudWatch Logs."
   type        = number
@@ -239,7 +252,7 @@ EOT
 ############################################
 
 resource "aws_cloudwatch_log_group" "dms" {
-  name              = "/aws/dms/${aws_dms_replication_instance.this.replication_instance_id}"
+  name              = "/aws/dms/${local.prefix_name}"
   retention_in_days = var.log_retention_days
   kms_key_id        = var.kms_key_arn
   tags              = var.tags
@@ -418,7 +431,7 @@ resource "aws_dms_replication_task" "this" {
   source_endpoint_arn       = aws_dms_endpoint.this[each.value.source_endpoint].endpoint_arn
   target_endpoint_arn       = aws_dms_endpoint.this[each.value.target_endpoint].endpoint_arn
   table_mappings            = each.value.table_mappings
-  replication_task_settings = lookup(each.value, "replication_settings", null)
+  replication_task_settings = each.value.replication_settings
 
   tags = var.tags
 }
@@ -438,6 +451,15 @@ output "s3_assessment_bucket" {
 output "s3_assessment_logs_bucket" {
   value = aws_s3_bucket.assessment_logs.bucket
 }
+output "s3_assessment_bucket_arn" {
+  description = "ARN of the assessment S3 bucket"
+  value       = aws_s3_bucket.assessment.arn
+}
+
+output "s3_assessment_logs_bucket_arn" {
+  description = "ARN of the assessment logs S3 bucket"
+  value       = aws_s3_bucket.assessment_logs.arn
+}
 
 output "cloudwatch_log_group" {
   value = aws_cloudwatch_log_group.dms.name
@@ -446,6 +468,16 @@ output "cloudwatch_log_group" {
 output "dms_secrets_mgr_role_arn" {
   value       = var.dms_secrets_mgr_role_arn
   description = "DMS Secrets Manager role ARN passed into the module."
+}
+
+output "dms_vpc_role_arn" {
+  value       = var.dms_vpc_role_arn
+  description = "DMS VPC role ARN passed into the module."
+}
+
+output "dms_cloudwatch_logs_role_arn" {
+  value       = var.dms_cloudwatch_logs_role_arn
+  description = "DMS CloudWatch Logs role ARN passed into the module."
 }
 
 output "replication_instance_id" {

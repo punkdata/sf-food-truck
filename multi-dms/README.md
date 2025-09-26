@@ -1,44 +1,46 @@
 # AWS DMS Terraform Module
 
-This Terraform module provisions a secure, OPA-compliant AWS Database Migration Service (DMS) environment. It manages replication instances, endpoints, tasks, networking, IAM roles, CloudWatch logs, and S3 buckets needed for migrations.  
+This Terraform module provisions a secure, OPA-compliant AWS Database Migration Service (DMS) environment. It manages replication instances, endpoints, tasks, networking, IAM roles, CloudWatch logs, and S3 buckets needed for migrations.
 
 ---
 
 ## Mandatory AWS DMS Roles
 
-AWS Database Migration Service depends on certain IAM roles. Some are **mandatory defaults** that AWS expects in every account, while others are required only when you use specific features like Secrets Manager.  
+AWS Database Migration Service depends on certain IAM roles. Some are **mandatory defaults** that AWS expects in every account, while others are required only when you use specific features like Secrets Manager.
 
 - **`dms-vpc-role`** – **AWS required default**.  
   Allows DMS to create and manage network interfaces in your VPC.  
-  Without this role, replication instances cannot launch.  
+  Without this role, replication instances cannot launch.
 
 - **`dms-cloudwatch-logs-role`** – **AWS required default**.  
   Allows DMS to write replication and task logs to CloudWatch Logs.  
-  Without this role, task logging will fail.  
+  Without this role, task logging will fail.
 
-- **`dms-secrets-mgr-role`** – **optional but required for Secrets Manager endpoints**.  
+- **`dms-secrets-mgr-role`** – **custom role required for Secrets Manager endpoints**.  
   This is **not provisioned by AWS by default**.  
   If you store database credentials in AWS Secrets Manager (recommended), DMS needs a role with `secretsmanager:GetSecretValue` it can assume.  
-  By convention, most teams name it `dms-secrets-mgr-role`, but you may use a custom name if you pass the ARN when creating endpoints.  
+  By convention, most teams name it `dms-secrets-mgr-role`, but you may use a custom name if you pass the ARN when creating endpoints.
 
-⚠️ **Important**:  
+Important:  
 - `dms-vpc-role` and `dms-cloudwatch-logs-role` must exist in the account before any DMS instance or task will succeed.  
-- If you use Secrets Manager integration, you must also provision a `dms-secrets-mgr-role` (or equivalent).  
+- If you use Secrets Manager integration, you must also provision a `dms-secrets-mgr-role` (or equivalent) and pass its ARN to the module.
 
 ---
 
 ## Inputs
 
 | Name | Type | Description | Default | Required |
-|---|---|---|---|---|
+|------|------|-------------|---------|----------|
 | `prefix_name` | `string` | Lowercase, hyphenized prefix used for naming all DMS resources. | — | **Yes** |
 | `subnet_ids` | `list(string)` | Subnet IDs for the DMS replication subnet group. | — | **Yes** |
 | `vpc_security_group_ids` | `list(string)` | Security group IDs attached to the replication instance. | `[]` | No |
 | `kms_key_arn` | `string` | Customer-managed KMS key ARN used for log group encryption and S3 buckets. | — | **Yes** |
-| `endpoints` | `map(object({ endpoint_type=string, engine_name=string, secrets_manager_arn=string, database_name=string, ssl_mode=optional(string, "require") }))` | Map of DMS endpoints. `endpoint_type` is `"source"` or `"target"`. `engine_name` e.g. `"postgres"`. `ssl_mode` supports `"require"`, `"verify-ca"`, `"verify-full"`. | `{}` | **Yes** |
-| `replication_tasks` | `map(object({ source_endpoint=string, target_endpoint=string, migration_type=string, table_mappings=string, replication_settings=optional(string) }))` | Map of replication tasks. `source_endpoint`/`target_endpoint` must match keys in `endpoints`. `migration_type` is one of `"full-load"`, `"cdc"`, `"full-load-and-cdc"`. `table_mappings`/`replication_settings` are JSON strings (inline or from `file(...)`). | `{}` | **Yes** |
+| `dms_secrets_mgr_role_arn` | `string` | ARN of the custom DMS Secrets Manager role (must be created outside this module). | — | **Yes** |
+| `dms_vpc_role_arn` | `string` | ARN of the AWS DMS VPC role. Must exist in the account. | `null` | No |
+| `dms_cloudwatch_logs_role_arn` | `string` | ARN of the AWS DMS CloudWatch Logs role. Must exist in the account. | `null` | No |
+| `endpoints` | `map(object)` | Map of DMS endpoints. Each must define: `endpoint_type`, `engine_name`, `secrets_manager_arn`, `database_name`. | `{}` | **Yes** |
+| `replication_tasks` | `map(object)` | Map of replication tasks. Must define: `source_endpoint`, `target_endpoint`, `migration_type`, `table_mappings` JSON. Optional `replication_settings` JSON. | `{}` | **Yes** |
 | `tags` | `map(string)` | Resource tags. Must include `Environment`, `AIT`, `Repo`, `Owner`. | — | **Yes** |
-| `iam_role_path` | `string` | IAM path for roles created by the module (e.g., execution role). | `"/service-role/"` | No |
 | `instance_class` | `string` | Replication instance class. | `"dms.t3.medium"` | No |
 | `allocated_storage` | `number` | Replication instance storage (GB). | `100` | No |
 | `multi_az` | `bool` | Whether to deploy the replication instance in multiple AZs. | `false` | No |
@@ -58,10 +60,12 @@ AWS Database Migration Service depends on certain IAM roles. Some are **mandator
 | `cloudwatch_log_group` | Name of the CloudWatch log group for DMS. |
 | `replication_instance_id` | ID of the replication instance. |
 | `replication_instance_arn` | ARN of the replication instance. |
-| `execution_role_arn` | ARN of the DMS execution role. |
-| `strict_roles` | Map of ARNs for any strict roles created. |
-| `secrets_policies` | Map of attached Secrets Manager secret policies by key. |
+| `dms_secrets_mgr_role_arn` | ARN of the DMS Secrets Manager role provided. |
+| `dms_vpc_role_arn` | ARN of the AWS DMS VPC role provided. |
+| `dms_cloudwatch_logs_role_arn` | ARN of the AWS DMS CloudWatch Logs role provided. |
 | `endpoint_arns` | Map of DMS endpoint ARNs by key. |
+| `replication_tasks` | Map of replication task IDs and ARNs. |
+| `secrets_policies` | Map of attached Secrets Manager secret policies by key. |
 
 ---
 
@@ -70,12 +74,24 @@ AWS Database Migration Service depends on certain IAM roles. Some are **mandator
 ### Basic Example
 
 ```hcl
+# Data sources for required roles
+data "aws_iam_role" "dms_vpc_role" {
+  name = "dms-vpc-role"
+}
+data "aws_iam_role" "dms_cloudwatch_logs_role" {
+  name = "dms-cloudwatch-logs-role"
+}
+
 module "dms" {
-  source                 = "github.com/your-org/terraform-aws-dms-module?ref=v1.6.0"
+  source                 = "github.com/your-org/terraform-aws-dms-module?ref=v2.0.0"
   prefix_name            = var.prefix_name
   subnet_ids             = var.subnet_ids
   vpc_security_group_ids = [aws_security_group.dms.id]
   kms_key_arn            = aws_kms_key.dms.arn
+
+  dms_secrets_mgr_role_arn     = aws_iam_role.dms_secrets_mgr_role.arn
+  dms_vpc_role_arn             = data.aws_iam_role.dms_vpc_role.arn
+  dms_cloudwatch_logs_role_arn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
 
   endpoints = {
     sourcepg = {
@@ -99,23 +115,84 @@ module "dms" {
       source_endpoint = "sourcepg"
       target_endpoint = "targetpg"
       migration_type  = "full-load"
-
       table_mappings = jsonencode({
-        rules = [
-          {
-            "rule-type"      = "selection"
-            "rule-id"        = "1"
-            "rule-name"      = "includeAll"
-            "object-locator" = {
-              "schema-name" = "%"
-              "table-name"  = "%"
-            }
-            "rule-action" = "include"
+        rules = [{
+          "rule-type" = "selection"
+          "rule-id"   = "1"
+          "rule-name" = "includeAll"
+          "object-locator" = {
+            "schema-name" = "%"
+            "table-name"  = "%"
           }
-        ]
+          "rule-action" = "include"
+        }]
+      })
+      replication_settings = jsonencode({
+        Logging = {
+          EnableLogging         = true
+          CloudWatchLogGroup    = "/aws/dms/${var.prefix_name}"
+          CloudWatchLogsRoleArn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+        }
       })
     }
+  }
 
+  tags = {
+    Environment = "dev"
+    AIT         = "dms-lab"
+    Repo        = "infra-modules"
+    Owner       = "team-x"
+  }
+}
+```
+
+---
+
+### Robust Example
+
+```hcl
+module "dms" {
+  source                 = "github.com/your-org/terraform-aws-dms-module?ref=v2.0.0"
+  prefix_name            = "demo-dms"
+  subnet_ids             = ["subnet-12345678", "subnet-abcdef12"]
+  vpc_security_group_ids = [aws_security_group.dms.id]
+  kms_key_arn            = aws_kms_key.dms.arn
+
+  dms_secrets_mgr_role_arn     = aws_iam_role.dms_secrets_mgr_role.arn
+  dms_vpc_role_arn             = data.aws_iam_role.dms_vpc_role.arn
+  dms_cloudwatch_logs_role_arn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+
+  endpoints = {
+    sourcepg = {
+      endpoint_type       = "source"
+      engine_name         = "postgres"
+      secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
+      database_name       = "sourcedb"
+      ssl_mode            = "require"
+    }
+    targetpg = {
+      endpoint_type       = "target"
+      engine_name         = "postgres"
+      secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
+      database_name       = "targetdb"
+      ssl_mode            = "require"
+    }
+  }
+
+  replication_tasks = {
+    full-load-task = {
+      source_endpoint = "sourcepg"
+      target_endpoint = "targetpg"
+      migration_type  = "full-load"
+      table_mappings  = file("${path.module}/table-mappings/full-load.json")
+      replication_settings = jsonencode({
+        Logging = {
+          EnableLogging         = true
+          CloudWatchLogGroup    = "/aws/dms/demo-dms"
+          CloudWatchLogsRoleArn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+        }
+      })
+    }
     cdc-task = {
       source_endpoint      = "sourcepg"
       target_endpoint      = "targetpg"
@@ -134,167 +211,11 @@ module "dms" {
 }
 ```
 
-📌 *See [JSON File Examples](#json-file-examples) below for sample `table-mappings.json` and `task-settings.json` content.*
-
----
-
-### Robust Usage Example
-
-This example shows a **full DMS build-out**, including KMS, security groups, Secrets Manager, and a replication task:
-
-```hcl
-# Data sources
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
-# KMS
-resource "aws_kms_key" "dms" {
-  description             = "Customer managed KMS key for DMS"
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "EnableRootAccount"
-        Effect   = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      }
-    ]
-  })
-  tags = {
-    Environment = "dev"
-    AIT         = "dms-lab"
-    Repo        = "infra-modules"
-    Owner       = "team-x"
-  }
-}
-
-resource "aws_kms_alias" "dms" {
-  name          = "alias/demo-dms-kms"
-  target_key_id = aws_kms_key.dms.key_id
-}
-
-# Security group
-resource "aws_security_group" "dms" {
-  name        = "demo-dms-sg"
-  description = "DMS replication instance SG"
-  vpc_id      = "vpc-1234567890abcdef0"
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = {
-    Environment = "dev"
-    AIT         = "dms-lab"
-    Repo        = "infra-modules"
-    Owner       = "team-x"
-  }
-}
-
-# Secrets Manager
-resource "aws_secretsmanager_secret" "source_pg" {
-  name       = "demo-srcpg"
-  kms_key_id = aws_kms_key.dms.arn
-  tags       = aws_security_group.dms.tags
-}
-resource "aws_secretsmanager_secret_version" "source_pg" {
-  secret_id = aws_secretsmanager_secret.source_pg.id
-  secret_string = jsonencode({
-    username = "src_user"
-    password = "CHANGEME"
-    engine   = "postgres"
-    host     = "source-db.example.com"
-    port     = 5432
-    dbname   = "sourcedb"
-    sslmode  = "require"
-  })
-}
-resource "aws_secretsmanager_secret" "target_pg" {
-  name       = "demo-tgtpg"
-  kms_key_id = aws_kms_key.dms.arn
-  tags       = aws_security_group.dms.tags
-}
-resource "aws_secretsmanager_secret_version" "target_pg" {
-  secret_id = aws_secretsmanager_secret.target_pg.id
-  secret_string = jsonencode({
-    username = "tgt_user"
-    password = "CHANGEME"
-    engine   = "postgres"
-    host     = "target-db.example.com"
-    port     = 5432
-    dbname   = "targetdb"
-    sslmode  = "require"
-  })
-}
-
-# Module usage
-module "dms" {
-  source                 = "github.com/your-org/terraform-aws-dms-module?ref=v1.6.0"
-  prefix_name            = "demo-dms"
-  subnet_ids             = ["subnet-1234567890abcdef0", "subnet-abcdef0123456789"]
-  vpc_security_group_ids = [aws_security_group.dms.id]
-  kms_key_arn            = aws_kms_key.dms.arn
-  endpoints = {
-    sourcepg = {
-      endpoint_type       = "source"
-      engine_name         = "postgres"
-      secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
-      database_name       = "sourcedb"
-      ssl_mode            = "require"
-    }
-    targetpg = {
-      endpoint_type       = "target"
-      engine_name         = "postgres"
-      secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
-      database_name       = "targetdb"
-      ssl_mode            = "require"
-    }
-  }
-  replication_tasks = {
-    full-load-task = {
-      source_endpoint = "sourcepg"
-      target_endpoint = "targetpg"
-      migration_type  = "full-load"
-      table_mappings = jsonencode({
-        rules = [
-          {
-            "rule-type"      = "selection"
-            "rule-id"        = "1"
-            "rule-name"      = "includeAll"
-            "object-locator" = {
-              "schema-name" = "%"
-              "table-name"  = "%"
-            }
-            "rule-action" = "include"
-          }
-        ]
-      })
-    }
-  }
-  tags = aws_security_group.dms.tags
-}
-```
-
 ---
 
 ## JSON File Examples
 
-In production, it’s often easier to manage complex task settings and mappings in external JSON files. Below are example snippets for reference.
-
-### Table Mappings (`table-mappings/full-load.json`)
+### `table-mappings/full-load.json`
 
 ```json
 {
@@ -313,39 +234,38 @@ In production, it’s often easier to manage complex task settings and mappings 
 }
 ```
 
-### Replication Settings (`task-settings/full-load.json`)
+### `table-mappings/cdc.json`
 
 ```json
 {
-  "TargetMetadata": {
-    "TargetSchema": "",
-    "SupportLobs": true
-  },
-  "FullLoadSettings": {
-    "TargetTablePrepMode": "DROP_AND_CREATE",
-    "StopTaskCachedChangesApplied": false,
-    "StopTaskCachedChangesNotApplied": false
-  },
-  "Logging": {
-    "EnableLogging": true
-  }
+  "rules": [
+    {
+      "rule-type": "selection",
+      "rule-id": "2",
+      "rule-name": "cdcAll",
+      "object-locator": {
+        "schema-name": "%",
+        "table-name": "%"
+      },
+      "rule-action": "include"
+    }
+  ]
 }
 ```
 
-### CDC Task Settings (`task-settings/cdc.json`)
+### `task-settings/cdc.json`
 
 ```json
 {
-  "TargetMetadata": {
-    "TargetSchema": "",
-    "SupportLobs": true
-  },
   "Logging": {
-    "EnableLogging": true
+    "EnableLogging": true,
+    "CloudWatchLogGroup": "/aws/dms/demo-dms",
+    "CloudWatchLogsRoleArn": "arn:aws:iam::123456789012:role/dms-cloudwatch-logs-role"
   },
-  "ControlTablesSettings": {
-    "historyTimeslotInMinutes": 5,
-    "historyTableEnabled": true
+  "ChangeProcessingDdlHandlingPolicy": {
+    "HandleSourceTableDropped": true,
+    "HandleSourceTableTruncated": true,
+    "HandleSourceTableAltered": true
   }
 }
 ```
@@ -354,94 +274,43 @@ In production, it’s often easier to manage complex task settings and mappings 
 
 ## Gotchas
 
-This module enforces AWS and OPA compliance rules. A few details to keep in mind:
+This module enforces AWS and OPA compliance rules. Keep these points in mind:
 
 - **Naming Constraints**  
-  - `prefix_name` must be lowercase, hyphenized, and ≤ 50 characters.  
-  - Replication task keys must start with a lowercase letter and only include lowercase letters, digits, and hyphens.  
-  - Endpoint keys must also follow lowercase rules.  
+  - `prefix_name` must be lowercase, hyphenized, ≤ 50 characters, and cannot contain consecutive hyphens.  
+  - Endpoint keys must start with a lowercase letter, contain only lowercase letters, digits, and hyphens, and must not end with a hyphen.  
+  - Replication task keys must follow the same rules and must not exceed 255 characters including prefix and suffix.  
 
 - **KMS Key Usage**  
-  - A customer-managed KMS key is required (`kms_key_arn`).  
-  - The execution role gets `kms:Encrypt`, `kms:Decrypt`, and related permissions.  
-  - Do not add KMS permissions in secret policies — only in the execution role.  
+  - You must supply a customer-managed KMS key ARN (`kms_key_arn`).  
+  - This key encrypts CloudWatch Logs, S3 buckets, and DMS endpoints.  
+  - The key policy must allow access to:  
+    - Your AWS account root  
+    - CloudWatch Logs (`logs.${region}.amazonaws.com`)  
+    - The DMS Secrets Manager role you pass (`dms_secrets_mgr_role_arn`)  
+  - Do not duplicate KMS permissions in secret resource policies; they belong in the KMS key policy.  
 
 - **Secrets Manager Policies**  
-  - Each secret must have a resource policy attached (OPA Secrets-Manager-4).  
-  - `block_public_policy = true` is enforced (OPA Secrets-Manager-5).  
-  - Policies are scoped to the DMS Secrets Manager role.  
+  - All secrets for endpoints must have a resource policy (`aws_secretsmanager_secret_policy`).  
+  - `block_public_policy = true` is enforced.  
+  - Policies only allow `secretsmanager:GetSecretValue` to the DMS Secrets Manager role created in usage.  
 
 - **Replication Tasks**  
-  - Inline JSON (via `jsonencode`) is fine for small tests.  
-  - Use external JSON files for real workloads.  
-  - `migration_type` must be one of: `full-load`, `cdc`, `full-load-and-cdc`.  
+  - Every replication task must reference valid `endpoints` keys.  
+  - `table_mappings` and `replication_settings` must be valid JSON; this is validated at plan time.  
+  - Inline JSON (`jsonencode`) is fine for small examples; use external JSON files (`file("...")`) for production.  
+  - Tasks should include CloudWatch Logs settings if log visibility is required.  
 
-- **Premigration Assessments**  
-  - Terraform does not support running premigration assessments.  
-  - These must be started manually in the AWS console.  
-  - The module only provisions the infrastructure required.  
+- **Required AWS Roles**  
+  - `dms-vpc-role` (AWS-required) must exist in the account for replication instances to create ENIs.  
+  - `dms-cloudwatch-logs-role` (AWS-required) must exist in the account for logging to work.  
+  - `dms-secrets-mgr-role` is **not created by this module**. If you use Secrets Manager, create it in your usage layer and pass the ARN.  
 
-- **tfvars Usage**  
-  - Always define `prefix_name`, `subnet_ids`, `kms_key_arn`, and `tags` in a `terraform.tfvars`.  
-  - This prevents Terraform from hanging on missing required inputs.
+- **S3 Buckets**  
+  - The module provisions two S3 buckets: one for assessment data and one for logs.  
+  - Both buckets enforce TLS, versioning, SSE-KMS, and logging (OPA-compliant).  
 
-
-# Milestones of Refactor
-
-# ✅ Major DMS Module Refactor Milestones
-
-## 1. Subnet Group Handling (2025-09-17)
-- Removed `replication_subnet_group_name` variable.  
-- Replaced with `subnet_ids` (list) and forced the module to always create a `replication_subnet_group`.  
-- Updated **usage examples** and **README** to reflect the new required input.
-
----
-
-## 2. KMS, IAM, and Service Principals Cleanup (2025-09-17 → 09-19)
-- Introduced **`format()`-based locals** for AWS service principals (`logs`, `s3`, `dms`) to fix parsing errors.  
-- Consolidated IAM policies into **consistent `aws_iam_policy_document` blocks**.  
-- Updated KMS key policy to reference locals, preventing "missing resource identity" errors.  
-- Result: a fully expanded `main.tf` baseline with OPA-compliant S3, CloudWatch, IAM, and KMS.
-
----
-
-## 3. Replication Tasks & JSON Mappings (2025-09-18 → 09-19)
-- Allowed **multiple replication tasks** via `replication_tasks` map.  
-- Supported **inline JSON** or **file-based JSON** for table mappings, task settings, connection attributes.  
-- Added **validation** for:
-  - `migration_type` (`full-load`, `cdc`, `full-load-and-cdc`)  
-  - `table_mappings` must not be null  
-- Paused discussion on whether to provide **defaults** vs **require JSON files**.
-
----
-
-## 4. Premigration Assessment Support (2025-09-18 → 09-19)
-- Added `premigration_assessments` map.  
-- Each assessment task is created as a separate resource.  
-- Assessment settings can be passed inline JSON or file reference.
-
----
-
-## 5. Secrets Manager & KMS Policy Fixes (2025-09-23 → 09-24)
-- Fixed **KMS key policy** to allow Secrets Manager retrieval.  
-- Added **IAM policy_document + attachment** for Secrets Manager (OPA compliance).  
-- Validated that secrets resolution requires both KMS permissions and proper role trust.
-
----
-
-## 6. Remove DMS Role Creation (2025-09-24 → 09-25)
-- Decided **not to create** the following inside the module:
-  - `dms-vpc-role` (AWS required, global)  
-  - `dms-cloudwatch-logs-role` (AWS required, global)  
-  - `dms-secrets-mgr-role` (custom, but can cause duplicates if module deployed multiple times)  
-- Instead:  
-  - Added variables `dms_vpc_role_arn`, `dms_cloudwatch_logs_role_arn`, `dms_secrets_mgr_role_arn`.  
-  - Updated references in endpoints and replication instance to consume ARNs.  
-  - Outputs now surface passed-in role ARNs.
-
----
-
-# 📌 Current Status
-- The module is **OPA-compliant**, **multi-task capable**, and **multi-endpoint capable**.  
-- All IAM roles are now **externalized** to avoid duplication.  
-- Usage examples, tfvars, and README need to be aligned to reflect these changes (passing in role ARNs instead of creating roles).
+- **CloudWatch Logs**  
+  - A log group is created at `/aws/dms/${prefix_name}` with your KMS key and a retention period (`log_retention_days`, default 30).  
+  - Replication tasks can log here when configured in `replication_settings`.
+  
