@@ -12,6 +12,10 @@ data "aws_iam_role" "dms_cloudwatch_logs_role" {
   name = "dms-cloudwatch-logs-role"
 }
 
+data "aws_iam_role" "dms_secrets_mgr_role" {
+  name = "dms-secrets-mgr-role"
+}
+
 ############################################
 # VARIABLES
 ############################################
@@ -103,7 +107,7 @@ data "aws_iam_policy_document" "kms_dms" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = [aws_iam_role.dms_secrets_mgr_role.arn]
+      identifiers = [data.aws_iam_role.dms_secrets_mgr_role.arn]
     }
     actions = [
       "kms:Decrypt",
@@ -185,50 +189,8 @@ resource "aws_secretsmanager_secret_policy" "source_pg" {
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = aws_secretsmanager_secret.source_pg.arn
         Principal = {
-          AWS = aws_iam_role.dms_secrets_mgr_role.arn
+          AWS = data.aws_iam_role.dms_secrets_mgr_role.arn
         }
-      }
-    ]
-  })
-}
-
-############################################
-# DMS SECRETS MANAGER ROLE
-############################################
-
-resource "aws_iam_role" "dms_secrets_mgr_role" {
-  name = "${var.prefix_name}-dms-secrets-mgr-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "dms.${data.aws_region.current.name}.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy" "dms_secrets_mgr_policy" {
-  name = "${var.prefix_name}-dms-secrets-mgr-policy"
-  role = aws_iam_role.dms_secrets_mgr_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
-        Resource = [
-          aws_secretsmanager_secret.source_pg.arn,
-          aws_secretsmanager_secret.target_pg.arn
-        ]
       }
     ]
   })
@@ -247,7 +209,7 @@ resource "aws_secretsmanager_secret_policy" "target_pg" {
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = aws_secretsmanager_secret.target_pg.arn
         Principal = {
-          AWS = aws_iam_role.dms_secrets_mgr_role.arn
+          AWS = data.aws_iam_role.dms_secrets_mgr_role.arn
         }
       }
     ]
@@ -265,7 +227,7 @@ module "dms" {
   vpc_security_group_ids = [aws_security_group.dms.id]
   kms_key_arn            = aws_kms_key.dms.arn
 
-  dms_secrets_mgr_role_arn     = aws_iam_role.dms_secrets_mgr_role.arn
+  dms_secrets_mgr_role_arn     = data.aws_iam_role.dms_secrets_mgr_role.arn
   dms_vpc_role_arn             = try(data.aws_iam_role.dms_vpc_role.arn, null)
   dms_cloudwatch_logs_role_arn = try(data.aws_iam_role.dms_cloudwatch_logs_role.arn, null)
 
@@ -311,9 +273,7 @@ module "dms" {
           SupportLobs  = true
         }
         Logging = {
-          EnableLogging         = true
-          CloudWatchLogGroup    = "/aws/dms/${var.prefix_name}"
-          CloudWatchLogsRoleArn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+          EnableLogging = true
         }
         FullLoadSettings = {
           TargetTablePrepMode = "DROP_AND_CREATE"
@@ -343,9 +303,7 @@ module "dms" {
 
       replication_settings = jsonencode({
         Logging = {
-          EnableLogging         = true
-          CloudWatchLogGroup    = "/aws/dms/${var.prefix_name}"
-          CloudWatchLogsRoleArn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+          EnableLogging = true
         }
         ChangeProcessingDdlHandlingPolicy = {
           HandleSourceTableDropped   = true
