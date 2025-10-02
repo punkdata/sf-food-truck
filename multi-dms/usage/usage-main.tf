@@ -41,6 +41,15 @@ variable "tags" {
 }
 
 ############################################
+# Local variables
+############################################
+
+locals {
+  source_pg = "sourcepg"
+  target_pg = "targetpg"
+}
+
+############################################
 # SECURITY GROUP FOR DMS INSTANCE
 ############################################
 
@@ -232,13 +241,13 @@ module "dms" {
   dms_cloudwatch_logs_role_arn = try(data.aws_iam_role.dms_cloudwatch_logs_role.arn, null)
 
   endpoints = {
-    sourcepg = {
+    "${local.source_pg}" = {
       endpoint_type       = "source"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
       ssl_mode            = "require"
     }
-    targetpg = {
+    "${local.target_pg}" = {
       endpoint_type       = "target"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
@@ -248,8 +257,8 @@ module "dms" {
 
   replication_tasks = {
     full-load-task = {
-      source_endpoint = "sourcepg"
-      target_endpoint = "targetpg"
+      source_endpoint = local.source_pg
+      target_endpoint = local.target_pg
       migration_type  = "full-load"
 
       table_mappings = jsonencode({
@@ -282,8 +291,8 @@ module "dms" {
     }
 
     cdc-task = {
-      source_endpoint = "sourcepg"
-      target_endpoint = "targetpg"
+      source_endpoint = local.source_pg
+      target_endpoint = local.target_pg
       migration_type  = "cdc"
 
       table_mappings = jsonencode({

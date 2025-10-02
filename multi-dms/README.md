@@ -38,7 +38,7 @@ Important:
 | `dms_secrets_mgr_role_arn` | `string` | ARN of the custom DMS Secrets Manager role (must be created outside this module). | — | **Yes** |
 | `dms_vpc_role_arn` | `string` | ARN of the AWS DMS VPC role. Must exist in the account. | `null` | No |
 | `dms_cloudwatch_logs_role_arn` | `string` | ARN of the AWS DMS CloudWatch Logs role. Must exist in the account. | `null` | No |
-| `endpoints` | `map(object)` | Map of DMS endpoints. Each must define: `endpoint_type`, `engine_name`, `secrets_manager_arn`, `database_name`. | `{}` | **Yes** |
+| `endpoints` | `map(object)` | Map of DMS endpoints. Each must define: `endpoint_type`, `engine_name`, `secrets_manager_arn`. Optional `database_name` if using basic auth (when not embedding in secret JSON). | `{}` | **Yes** |
 | `replication_tasks` | `map(object)` | Map of replication tasks. Must define: `source_endpoint`, `target_endpoint`, `migration_type`, `table_mappings` JSON. Optional `replication_settings` JSON. | `{}` | **Yes** |
 | `tags` | `map(string)` | Resource tags. Must include `Environment`, `AIT`, `Repo`, `Owner`. | — | **Yes** |
 | `instance_class` | `string` | Replication instance class. | `"dms.t3.medium"` | No |
@@ -65,7 +65,7 @@ Important:
 | `dms_cloudwatch_logs_role_arn` | ARN of the AWS DMS CloudWatch Logs role provided. |
 | `endpoint_arns` | Map of DMS endpoint ARNs by key. |
 | `replication_tasks` | Map of replication task IDs and ARNs. |
-| `secrets_policies` | Map of attached Secrets Manager secret policies by key. |
+| `secrets_policies` | Map of attached Secrets Manager secret policies by key (if created outside, include IDs in outputs). |
 
 ---
 
@@ -74,75 +74,147 @@ Important:
 ### Basic Example
 
 ```hcl
-# Data sources for required roles
+# DATA SOURCES
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 data "aws_iam_role" "dms_vpc_role" {
   name = "dms-vpc-role"
 }
 data "aws_iam_role" "dms_cloudwatch_logs_role" {
   name = "dms-cloudwatch-logs-role"
 }
+data "aws_iam_role" "dms_secrets_mgr_role" {
+  name = "dms-secrets-mgr-role"
+}
 
+# LOCALS
+locals {
+  source_pg = "sourcepg"
+  target_pg = "targetpg"
+}
+
+# SECURITY GROUP FOR DMS INSTANCE
+resource "aws_security_group" "dms" {
+  name        = "${var.prefix_name}-dms-sg"
+  description = "Security group for DMS replication instance"
+  vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"] # adjust for your environment
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.prefix_name}-dms-sg"
+  })
+}
+
+# SECRETS (inline example)
+resource "aws_secretsmanager_secret" "source_pg" {
+  name       = "${var.prefix_name}-srcpg"
+  kms_key_id = aws_kms_key.dms.arn
+  tags       = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "source_pg" {
+  secret_id = aws_secretsmanager_secret.source_pg.id
+  secret_string = jsonencode({
+    username = "dms_user",
+    password = "CHANGEME",
+    engine   = "postgres",
+    host     = "source-db.example.com",
+    port     = 5432,
+    dbname   = "sourcedb",
+    sslmode  = "require"
+  })
+}
+
+resource "aws_secretsmanager_secret" "target_pg" {
+  name       = "${var.prefix_name}-tgtpg"
+  kms_key_id = aws_kms_key.dms.arn
+  tags       = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "target_pg" {
+  secret_id = aws_secretsmanager_secret.target_pg.id
+  secret_string = jsonencode({
+    username = "dms_user",
+    password = "CHANGEME",
+    engine   = "postgres",
+    host     = "target-db.example.com",
+    port     = 5432,
+    dbname   = "targetdb",
+    sslmode  = "require"
+  })
+}
+
+# MODULE USAGE
 module "dms" {
-  source                 = "github.com/your-org/terraform-aws-dms-module?ref=v2.0.0"
+  source                 = "../modules/dms"
   prefix_name            = var.prefix_name
   subnet_ids             = var.subnet_ids
   vpc_security_group_ids = [aws_security_group.dms.id]
   kms_key_arn            = aws_kms_key.dms.arn
 
-  dms_secrets_mgr_role_arn     = aws_iam_role.dms_secrets_mgr_role.arn
-  dms_vpc_role_arn             = data.aws_iam_role.dms_vpc_role.arn
-  dms_cloudwatch_logs_role_arn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+  dms_secrets_mgr_role_arn     = data.aws_iam_role.dms_secrets_mgr_role.arn
+  dms_vpc_role_arn             = try(data.aws_iam_role.dms_vpc_role.arn, null)
+  dms_cloudwatch_logs_role_arn = try(data.aws_iam_role.dms_cloudwatch_logs_role.arn, null)
 
   endpoints = {
-    sourcepg = {
+    "${local.source_pg}" = {
       endpoint_type       = "source"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
-      database_name       = "sourcedb"
       ssl_mode            = "require"
     }
-    targetpg = {
+    "${local.target_pg}" = {
       endpoint_type       = "target"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
-      database_name       = "targetdb"
       ssl_mode            = "require"
     }
   }
 
   replication_tasks = {
     full-load-task = {
-      source_endpoint = "sourcepg"
-      target_endpoint = "targetpg"
+      source_endpoint = local.source_pg
+      target_endpoint = local.target_pg
       migration_type  = "full-load"
+
       table_mappings = jsonencode({
         rules = [{
-          "rule-type" = "selection"
-          "rule-id"   = "1"
-          "rule-name" = "includeAll"
+          "rule-type" = "selection",
+          "rule-id"   = "1",
+          "rule-name" = "includeAll",
           "object-locator" = {
-            "schema-name" = "%"
+            "schema-name" = "%",
             "table-name"  = "%"
-          }
+          },
           "rule-action" = "include"
         }]
       })
+
       replication_settings = jsonencode({
         Logging = {
-          EnableLogging         = true
-          CloudWatchLogGroup    = "/aws/dms/${var.prefix_name}"
-          CloudWatchLogsRoleArn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
+          EnableLogging = true
+        },
+        FullLoadSettings = {
+          TargetTablePrepMode = "DROP_AND_CREATE"
         }
       })
     }
   }
 
-  tags = {
-    Environment = "dev"
-    AIT         = "dms-lab"
-    Repo        = "infra-modules"
-    Owner       = "team-x"
-  }
+  tags = var.tags
 }
 ```
 
@@ -151,63 +223,56 @@ module "dms" {
 ### Robust Example
 
 ```hcl
+locals {
+  source_pg = "sourcepg"
+  target_pg = "targetpg"
+}
+
 module "dms" {
-  source                 = "github.com/your-org/terraform-aws-dms-module?ref=v2.0.0"
+  source                 = "../modules/dms"
   prefix_name            = "demo-dms"
   subnet_ids             = ["subnet-12345678", "subnet-abcdef12"]
   vpc_security_group_ids = [aws_security_group.dms.id]
   kms_key_arn            = aws_kms_key.dms.arn
 
-  dms_secrets_mgr_role_arn     = aws_iam_role.dms_secrets_mgr_role.arn
+  dms_secrets_mgr_role_arn     = data.aws_iam_role.dms_secrets_mgr_role.arn
   dms_vpc_role_arn             = data.aws_iam_role.dms_vpc_role.arn
   dms_cloudwatch_logs_role_arn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
 
   endpoints = {
-    sourcepg = {
+    "${local.source_pg}" = {
       endpoint_type       = "source"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.source_pg.arn
-      database_name       = "sourcedb"
       ssl_mode            = "require"
     }
-    targetpg = {
+    "${local.target_pg}" = {
       endpoint_type       = "target"
       engine_name         = "postgres"
       secrets_manager_arn = aws_secretsmanager_secret.target_pg.arn
-      database_name       = "targetdb"
       ssl_mode            = "require"
     }
   }
 
   replication_tasks = {
     full-load-task = {
-      source_endpoint = "sourcepg"
-      target_endpoint = "targetpg"
-      migration_type  = "full-load"
-      table_mappings  = file("${path.module}/table-mappings/full-load.json")
-      replication_settings = jsonencode({
-        Logging = {
-          EnableLogging         = true
-          CloudWatchLogGroup    = "/aws/dms/demo-dms"
-          CloudWatchLogsRoleArn = data.aws_iam_role.dms_cloudwatch_logs_role.arn
-        }
-      })
+      source_endpoint      = local.source_pg
+      target_endpoint      = local.target_pg
+      migration_type       = "full-load"
+      table_mappings       = file("${path.module}/table-mappings/full-load.json")
+      replication_settings = file("${path.module}/task-settings/full-load.json")
     }
+
     cdc-task = {
-      source_endpoint      = "sourcepg"
-      target_endpoint      = "targetpg"
+      source_endpoint      = local.source_pg
+      target_endpoint      = local.target_pg
       migration_type       = "cdc"
       table_mappings       = file("${path.module}/table-mappings/cdc.json")
       replication_settings = file("${path.module}/task-settings/cdc.json")
     }
   }
 
-  tags = {
-    Environment = "dev"
-    AIT         = "dms-lab"
-    Repo        = "infra-modules"
-    Owner       = "team-x"
-  }
+  tags = var.tags
 }
 ```
 
@@ -216,7 +281,6 @@ module "dms" {
 ## JSON File Examples
 
 ### `table-mappings/full-load.json`
-
 ```json
 {
   "rules": [
@@ -234,8 +298,28 @@ module "dms" {
 }
 ```
 
-### `table-mappings/cdc.json`
+### `task-settings/full-load.json`
+```json
+{
+  "Logging": {
+    "EnableLogging": true
+  },
+  "FullLoadSettings": {
+    "TargetTablePrepMode": "DROP_AND_CREATE",
+    "StopTaskCachedChangesApplied": false,
+    "StopTaskCachedChangesNotApplied": false,
+    "MaxFullLoadSubTasks": 8,
+    "TransactionConsistencyTimeout": 600,
+    "CommitRate": 10000
+  },
+  "TargetMetadata": {
+    "TargetSchema": "",
+    "SupportLobs": true
+  }
+}
+```
 
+### `table-mappings/cdc.json`
 ```json
 {
   "rules": [
@@ -254,13 +338,10 @@ module "dms" {
 ```
 
 ### `task-settings/cdc.json`
-
 ```json
 {
   "Logging": {
-    "EnableLogging": true,
-    "CloudWatchLogGroup": "/aws/dms/demo-dms",
-    "CloudWatchLogsRoleArn": "arn:aws:iam::123456789012:role/dms-cloudwatch-logs-role"
+    "EnableLogging": true
   },
   "ChangeProcessingDdlHandlingPolicy": {
     "HandleSourceTableDropped": true,
