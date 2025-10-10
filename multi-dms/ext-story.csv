@@ -1,0 +1,64 @@
+Summary,Description,Acceptance Criteria,Story Points,Epic Link
+Validate and Integrate with Existing S3 Export Bucket,"Validate configuration and integrate Lambda write permissions with the existing S3 export bucket. Confirm encryption, versioning, and access controls align with pipeline requirements.","Given the S3 export bucket already exists
+When the Terraform configuration references it
+Then bucket encryption using SSE-KMS (CMK) must be confirmed
+And versioning must be enabled
+And bucket policy must deny non-TLS access
+And Lambda’s role must have scoped write access to the export prefix only",5,RDS Data Extraction Pipeline
+Create Customer-Managed KMS Key (CMK) for Export Encryption,"Provision and configure a CMK with explicit key policy for Lambda and S3, including audit logging and rotation settings.","Given Terraform defines a CMK and alias
+When the CMK is deployed
+Then Lambda and S3 principals are granted only kms:Encrypt and kms:GenerateDataKey*
+And CMK rotation and CloudTrail logging are enabled
+And Lambda must not have kms:Decrypt permissions",5,RDS Data Extraction Pipeline
+Define Least-Privilege IAM Roles and Policies,"Implement IAM roles and policies for Lambda, S3, and EventBridge that follow least-privilege and account isolation principles.","Given IAM roles and policies are deployed
+When Terraform applies configuration
+Then roles must contain only explicit permissions required for Lambda, S3, KMS, and RDS
+And no wildcards or PassRole actions are present
+And Lambda trust policy specifies only lambda.amazonaws.com",8,RDS Data Extraction Pipeline
+Implement RDS IAM Authentication and Read-Only DB Role,"Enable IAM database authentication on RDS and configure a scoped, read-only role used exclusively by Lambda.","Given RDS IAM authentication is enabled
+When Lambda uses an IAM DB token
+Then RDS must authenticate and authorize the DB user via IAM
+And the DB role must have only SELECT permissions
+And all connections must use TLS with the RDS CA bundle",5,RDS Data Extraction Pipeline
+Develop and Deploy Lambda Data Extraction Function,"Create a Python 3.11 Lambda that connects securely to RDS using IAM Auth, extracts data to CSV, and writes to S3 with SSE-KMS encryption.","Given Lambda executes within private VPC subnets
+When the function runs
+Then it connects to RDS using IAM tokens
+And outputs CSV files to S3 with CMK encryption
+And emits structured logs and metrics (RowsExported, CsvSizeBytes, QueryDurationMs)
+And handles all errors by category (Auth, SQL, Write)",8,RDS Data Extraction Pipeline
+Configure EventBridge Daily Trigger,Create an EventBridge rule that invokes the Lambda daily with retry and DLQ support.,"Given the EventBridge rule is deployed
+When the schedule executes daily
+Then Lambda must trigger successfully
+And failures must route to DLQ
+And Lambda resource policy allows invoke from the rule ARN",3,RDS Data Extraction Pipeline
+"Implement Logging, Metrics, and Alarms","Enable CloudWatch logging, metrics, and alarms for the Lambda and related pipeline resources.","Given Lambda emits metrics and logs
+When execution completes
+Then structured logs must be available and retained ≥ 400 days
+And alarms trigger on failures or missed runs
+And dashboards summarize daily pipeline performance",5,RDS Data Extraction Pipeline
+Integrate Terraform Validation in CI/CD Pipeline,"Implement Terraform plan/apply validation in the CI/CD pipeline to enforce naming, tagging, and security standards.","Given Terraform plan runs in CI/CD
+When validation is executed
+Then resources must pass naming and security rules
+And compliance report is exported as a build artifact
+And failing plans block deployment",5,RDS Data Extraction Pipeline
+"Validate IAM, KMS, and S3 Security Controls",Perform targeted security tests to confirm IAM and KMS policies and S3 restrictions function as intended.,"Given the environment is deployed
+When unauthorized S3 or KMS actions are attempted
+Then they must fail with AccessDenied
+And non-TLS requests must be blocked
+And access events must appear in CloudTrail",5,RDS Data Extraction Pipeline
+Execute End-to-End Data Extraction Test,"Run a complete EventBridge → Lambda → RDS → S3 flow to validate export functionality, encryption, and metrics.","Given the daily schedule triggers Lambda
+When the extraction completes
+Then a CSV exists under the correct S3 prefix and date partition
+And metadata shows CMK encryption
+And CloudWatch logs confirm success
+And record count and schema match expected query output",5,RDS Data Extraction Pipeline
+Perform Post-Deployment Audit and Compliance Validation,"Verify compliance and traceability through CloudTrail, AWS Config, and IAM Access Analyzer after deployment.","Given the system is deployed
+When audit tools are run
+Then no unauthorized cross-account access is detected
+And KMS and S3 access events are logged and traceable
+And Config rules report all resources as compliant",5,RDS Data Extraction Pipeline
+Create Operational Dashboards and Runbooks,"Develop CloudWatch dashboards and runbooks documenting metrics, alert responses, and support procedures.","Given system metrics and logs exist
+When dashboards and runbooks are reviewed
+Then dashboards must display key metrics (invocations, errors, latency)
+And runbooks describe response actions for common failure scenarios
+And operations team approves before production release",3,RDS Data Extraction Pipeline
