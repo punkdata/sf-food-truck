@@ -1,0 +1,6 @@
+        "config:Describe*",
+        "config:Get*",
+        "config:List*",
+        "config:Select*",
+        "config:DeliverConfigSnapshot",
+        
