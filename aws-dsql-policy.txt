@@ -1,0 +1,87 @@
+Viewer
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DSQLReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "dsql:ListClusters",
+        "dsql:GetCluster",
+        "dsql:GetVpcEndpointServiceName",
+        "dsql:ListTagsForResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+
+
+
+engineer
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DSQLReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "dsql:ListClusters",
+        "dsql:GetCluster",
+        "dsql:GetVpcEndpointServiceName",
+        "dsql:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DSQLConnectNonAdmin",
+      "Effect": "Allow",
+      "Action": [
+        "dsql:DbConnect"
+      ],
+      "Resource": "arn:aws:dsql:REGION:ACCOUNT_ID:cluster/*"
+    }
+  ]
+}
+
+
+
+
+elev
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DSQLReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "dsql:ListClusters",
+        "dsql:GetCluster",
+        "dsql:GetVpcEndpointServiceName",
+        "dsql:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DSQLConnectNonAdmin",
+      "Effect": "Allow",
+      "Action": [
+        "dsql:DbConnect"
+      ],
+      "Resource": "arn:aws:dsql:REGION:ACCOUNT_ID:cluster/*"
+    },
+    {
+      "Sid": "DSQLConnectAdmin",
+      "Effect": "Allow",
+      "Action": [
+        "dsql:DbConnectAdmin"
+      ],
+      "Resource": "arn:aws:dsql:REGION:ACCOUNT_ID:cluster/*"
+    }
+  ]
+}
+
+
